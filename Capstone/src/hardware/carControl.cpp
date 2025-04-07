@@ -178,7 +178,7 @@ void loop() {
 
     if (dist > 0 && dist <= OBSTACLE_DISTANCE_CM) {
         stop();
-        delay(200);
+        delay(100);
         turnRightGyro(DEFAULT_SPEED);
         delay(200);
     } else {
