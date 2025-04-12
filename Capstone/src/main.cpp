@@ -5,108 +5,102 @@
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
 #include <ArduinoJson.h>
+#include <RadioLib.h>
+
+
+
+
 
 #define Vext 36
 #define SDA 33
 #define SCL 34
 
-#define ALTITUDE 1013.25
+#define DIO_0    26
+#define DIO_1    14
+#define NSS      8
+#define RESET    12
+#define BUSY     13
 
-TFLI2C tflI2C;
-Adafruit_BMP280 bmp; // I2C
-Adafruit_MPU6050 mpu; // I2C
+SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
-int16_t  tfDist;    // distance in centimeters
-int16_t  tfAddr = TFL_DEF_ADR;  // Use this default I2C address
+
+int count = 0;
+
+volatile bool receivedFlag = false;
+
+// this function is called when a complete packet
+// is received by the module
+// IMPORTANT: this function MUST be 'void' type
+//            and MUST NOT have any arguments!
+#if defined(ESP8266) || defined(ESP32)
+  ICACHE_RAM_ATTR
+#endif
+void setFlag(void) {
+  // we got a packet, set the flag
+  receivedFlag = true;
+}
 
 void setup(){
+
+    Serial.begin(115200);  // Initalize serial port
+    Wire.begin(SDA, SCL);           // Initalize Wire library
 
     //Turn Vext on to power Sensors
     pinMode(Vext,OUTPUT);
     digitalWrite(Vext, LOW);
 
-    Serial.begin(115200);  // Initalize serial port
-    Wire.begin(SDA, SCL);           // Initalize Wire library
-
-    if (!bmp.begin(0x76)) {
-        Serial.println("Could not find a valid BMP280 sensor, check wiring!");
-        while (1);
+    Serial.print(F("[SX1262] Initializing ... "));
+    int state = radio.begin();
+    if (state == RADIOLIB_ERR_NONE) {
+        Serial.println(F("success!"));
+    } 
+    
+    else {
+        Serial.print(F("failed, code "));
+        Serial.println(state);
+        while (true) { delay(10); }
     }
 
-    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-        Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-        Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-        Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-        Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+    radio.setPacketReceivedAction(setFlag);
 
-    if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip");
-        while (1);
-    }
-
-
+  // start listening for LoRa packets
+  Serial.print(F("[SX1262] Starting to listen ... "));
+  state = radio.startReceive();
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.println(F("success!"));
+  } else {
+    Serial.print(F("failed, code "));
+    Serial.println(state);
+    while (true) { delay(10); }
+  }
 }
 
 void loop(){
+  if(receivedFlag) {
+    // reset flag
+    receivedFlag = false;
 
-    // Serial.println("------------------TFLuna------------------");
+    // you can read received data as an Arduino String
+    String str;
+    int state = radio.readData(str);
+
+    if (state == RADIOLIB_ERR_NONE) {
+        // // packet was successfully received
+        // Serial.println(F("[SX1262] Received packet!"));
   
-    if( tflI2C.getData( tfDist, tfAddr)) // If read okay...
-    {
-        // Serial.print("Dist: ");
-        // Serial.print(tfDist);          // print the data...
-        // Serial.println(" cm");
+        // // print data of the packet
+        // Serial.print(F("[SX1262] Data:\t\t"));
+        Serial.println(str);
+  
+     }
+
+     else 
+     {
+        // some other error occurred
+        Serial.print(F("failed, code "));
+        Serial.println(state);
+  
     }
-    else{ 
-        
-        // tflI2C.printStatus(); // print the status of the last operation
-        // Serial.println("");
-
-    };           
-
-    // Serial.println("------------------BMP280------------------");
-
-    // Serial.print("Temperature = ");
-    // Serial.print(bmp.readTemperature());
-    // Serial.println(" *C");
-
-    // Serial.print("Pressure = ");
-    // Serial.print(bmp.readPressure());
-    // Serial.println(" Pa");
-
-    // Serial.print("Altitude = ");
-    // Serial.print(bmp.readAltitude(ALTITUDE)); // this should be adjusted to your local forcase
-    // Serial.println(" m");
-
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-
-    // Serial.println("------------------MPU6050------------------");
-
-    // Serial.print("Acceleration X: "); Serial.print(a.acceleration.x); Serial.print(" m/s^2");
-    // Serial.print("\tY: "); Serial.print(a.acceleration.y); Serial.print(" m/s^2");
-    // Serial.print("\tZ: "); Serial.print(a.acceleration.z); Serial.println(" m/s^2");
-
-    // Serial.print("Rotation X: "); Serial.print(g.gyro.x); Serial.print(" rad/s");
-    // Serial.print("\tY: "); Serial.print(g.gyro.y); Serial.print(" rad/s");
-    // Serial.print("\tZ: "); Serial.print(g.gyro.z); Serial.println(" rad/s");
-
-
-    JsonDocument doc;
-    doc["Distance"] = tfDist;
-    doc["Temperature"] = bmp.readTemperature();
-    doc["Pressure"] = bmp.readPressure();
-    doc["Altitude"] = bmp.readAltitude(ALTITUDE);
-    doc["Acceleration_X"] = a.acceleration.x;
-    doc["Acceleration_Y"] = a.acceleration.y;
-    doc["Acceleration_Z"] = a.acceleration.z;
-    doc["Rotation_X"] = g.gyro.x;
-    doc["Rotation_Y"] = g.gyro.y;
-    doc["Rotation_Z"] = g.gyro.z;
-
-    serializeJson(doc, Serial);
-    Serial.println("");
-
-
-    delay(500);
+      delay(500);
+  }
 }
