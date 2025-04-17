@@ -69,6 +69,25 @@ class LidarMappingSystem:
         self.vis.get_view_control().set_zoom(0.8)
         self.vis.get_render_option().point_size = 2.0
 
+    def process_sweep_data(self, angle, distance, sweep_direction):
+        """Process incoming sweep data and manage point cloud construction"""
+        point = self.scan_to_point(angle, distance)
+        if point is not None:
+            # Transform point to global coordinates
+            global_point = self.current_pose @ point
+            
+            # Store point with metadata
+            point_data = {
+                "position": global_point[:3],  # Only x,y,z coordinates
+                "direction": sweep_direction,
+                "timestamp": time.time()
+            }
+            self.map_points.append(point_data)
+            
+            # Update visualization if we have enough new points
+            if len(self.map_points) % 10 == 0:  # Update every 10 points
+                self.update_visualization()
+
     def read_sensor_data(self):
         """Read and parse sensor data from serial port"""
         if self.ser and self.ser.in_waiting > 0:
@@ -104,7 +123,7 @@ class LidarMappingSystem:
         angle_rad = math.radians(angle_deg)
         x = distance_cm * math.cos(angle_rad)
         y = distance_cm * math.sin(angle_rad)
-        z = self.sensor_data["Altitude"] * 100  # Convert meters to cm
+        z = self.sensor_data["Alti"] * 100  # Convert meters to cm
         
         return np.array([x, y, z, 1.0])  # Homogeneous coordinates
 
@@ -112,15 +131,15 @@ class LidarMappingSystem:
         """Update pose estimation using IMU data (dead reckoning)"""
         # Extract rotation rates and accelerations
         gyro = np.array([
-            self.sensor_data["Rotation_X"],
-            self.sensor_data["Rotation_Y"],
-            self.sensor_data["Rotation_Z"]
+            self.sensor_data["Rotat_X"],  # Changed from "Rotation_X"
+            self.sensor_data["Rotat_Y"],  # Changed from "Rotation_Y"
+            self.sensor_data["Rotat_Z"]   # Changed from "Rotation_Z"
         ])
         
         accel = np.array([
-            self.sensor_data["Acceleration_X"],
-            self.sensor_data["Acceleration_Y"],
-            self.sensor_data["Acceleration_Z"]
+            self.sensor_data["Accel_X"],  # Changed from "Acceleration_X"
+            self.sensor_data["Accel_Y"],  # Changed from "Acceleration_Y"
+            self.sensor_data["Accel_Z"]   # Changed from "Acceleration_Z"
         ])
         
         # Calculate rotation update (simple integration)
@@ -152,7 +171,7 @@ class LidarMappingSystem:
         rotation_diff = np.linalg.norm(rot1.as_rotvec() - rot2.as_rotvec())
         
         # Check altitude difference
-        altitude_diff = abs(self.sensor_data["Altitude"] - self.keyframes[-1]["altitude"])
+        altitude_diff = abs(self.sensor_data["Alti"] - self.keyframes[-1]["altitude"])
         
         # Create keyframe if moved more than 10cm, rotated more than 5 degrees, or altitude changed more than 10cm
         return (translation_diff > 10.0 or 
@@ -183,19 +202,21 @@ class LidarMappingSystem:
         if not self.map_points:
             return
             
-        # Update point cloud with current map points
-        self.pcd.points = o3d.utility.Vector3dVector(np.array(self.map_points))
+        # Extract positions and create colors based on sweep direction
+        positions = np.array([p["position"] for p in self.map_points])
+        colors = np.array([
+            [1.0, 0.5, 0.5] if p["direction"] == "up" else [0.5, 0.5, 1.0] 
+            for p in self.map_points
+        ])
         
-        # Set colors (optional)
-        colors = np.ones((len(self.map_points), 3)) * np.array([0.5, 0.5, 1.0])  # Blue points
+        # Update point cloud
+        self.pcd.points = o3d.utility.Vector3dVector(positions)
         self.pcd.colors = o3d.utility.Vector3dVector(colors)
         
-        # Update coordinate frame to current position
-        self.coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=20.0, origin=self.current_pose[:3, 3]
-        )
+        # Update coordinate frame
+        self.coordinate_frame.transform(self.current_pose)
         
-        # Update rendering
+        # Update visualization
         self.vis.update_geometry(self.pcd)
         self.vis.update_geometry(self.coordinate_frame)
         self.vis.poll_events()
