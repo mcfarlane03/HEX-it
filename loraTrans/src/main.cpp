@@ -55,7 +55,7 @@ String personDetectionJSON = "";  // to store camera messages
 // Servo sweep variables
 int currentAngle = 0;
 bool sweepingUp = true;
-const int ANGLE_STEP = 5;  // Degrees to move per reading
+const int ANGLE_STEP = 6;  // Degrees to move per reading
 
 // ESP-NOW configuration
 typedef struct struct_message {
@@ -170,8 +170,10 @@ void loop(){
     doc["Rotat_X"] = g.gyro.x;
     doc["Rotat_Y"] = g.gyro.y;
     doc["Rotat_Z"] = g.gyro.z;
-    doc["Angle"] = currentAngle;  // Add servo angle to JSON
-    doc["Human"] = personDetected; 
+    doc["Angle"] = currentAngle; 
+    doc["Sweep"] = sweepingUp ? "up" : "down";   
+    doc["Human"] = personDetected;
+     
 
    // 4. Send data over LoRa
     String jsonString;

@@ -23,6 +23,8 @@ class LidarMappingSystem:
             "Rotat_X": 0.0,
             "Rotat_Y": 0.0,
             "Rotat_Z": 0.0,
+            "Angle": 0.0, 
+            "Sweep": "up",
             "Human": False
         }
         
@@ -79,6 +81,13 @@ class LidarMappingSystem:
                         for key in self.sensor_data:
                             if key in parsed_data:
                                 self.sensor_data[key] = parsed_data[key]
+                        
+                        # Use sweep direction for point cloud processing
+                        self.process_sweep_data(
+                            self.sensor_data["Angle"],
+                            self.sensor_data["Distance"],
+                            self.sensor_data["Sweep"]
+                        )
                         return True
                     except json.JSONDecodeError:
                         print(f"Failed to parse JSON: {data}")
