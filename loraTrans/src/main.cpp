@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
 #include <TFLI2C.h>      // TFLuna-I2C Library v.0.1.1
+#include <ESP32Servo.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
@@ -19,16 +20,33 @@
 #define RESET    12
 #define BUSY     13
 
+#define RXD2    3
+#define TXD2    36
+
+// #define LIDAR_FRONT_ADDR TFL_DEF_ADR  // Default address (0x10)
+// #define LIDAR_BACK_ADDR  0x11         // Second LiDAR address
+//#define SERVO_PIN 15 
+
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
 TFLI2C tflI2C;
+// TFLI2C tflFront;  // Front LiDAR
+// TFLI2C tflBack;   // Back LiDAR
+
+//Servo sweepServo;
+
 Adafruit_BMP280 bmp; // I2C
 Adafruit_MPU6050 mpu; // I2C
 
+//int16_t  distFront, distBack;   // distance in centimeters
 int16_t  tfDist;    // distance in centimeters
 int16_t  tfAddr = TFL_DEF_ADR;  // Use this default I2C address
 
 int txNumber = 0;
+String personDetectionJSON = "";  // to store camera messages
+unsigned long lastPersonTimestamp = 0;
+int currentAngle = 0;
+int sweepDirection = 1;  // 1 = increasing, -1 = decreasing
 
 void setup(){
 
@@ -37,7 +55,13 @@ void setup(){
     digitalWrite(Vext, LOW);
 
     Serial.begin(115200);  // Initalize serial port
+    Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // Initalize serial port for camera
+    
     Wire.begin(SDA, SCL);           // Initalize Wire library
+
+    // Initialize servo
+   // sweepServo.attach(SERVO_PIN);
+   // sweepServo.write(0);  // Start at 0 degrees
 
     if (!bmp.begin(0x76)) {
         Serial.println("Could not find a valid BMP280 sensor, check wiring!");
@@ -65,19 +89,38 @@ void setup(){
       while (true) { delay(10); }
     }
 
-
 }
 
 void loop(){
+    // 1. Read from Serial2 if any camera data available
+    while (Serial2.available()) {
+      personDetectionJSON = Serial2.readStringUntil('\n');
+      lastPersonTimestamp = millis();
+      Serial.println("Got camera data:");
+      Serial.println(personDetectionJSON);
+  }
 
     // Serial.println("------------------TFLuna------------------");
-  
-    tflI2C.getData( tfDist, tfAddr);           
+ // 2. Get sensor data from both LiDARs
+  // if (tflFront.getData(distFront, LIDAR_FRONT_ADDR)) {
+  //   Serial.print("Front Distance: ");
+  //   Serial.println(distFront);
+  // }
 
+  // if (tflBack.getData(distBack, LIDAR_BACK_ADDR)) {
+  //   Serial.print("Back Distance: ");
+  //   Serial.println(distBack);
+  // }
+
+    tflI2C.getData( tfDist, tfAddr);
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
 
+    // 3. JSON document
+
     JsonDocument doc;
+    // doc["DistanceFront"] = distFront;
+    // doc["DistanceBack"] = distBack;
     doc["Distance"] = tfDist;
     doc["Temperature"] = bmp.readTemperature();
     doc["Pressure"] = bmp.readPressure();
@@ -89,6 +132,24 @@ void loop(){
     doc["Rotation_Y"] = g.gyro.y;
     doc["Rotation_Z"] = g.gyro.z;
 
+    // 3. Add camera detection if received recently
+    if (millis() - lastPersonTimestamp < 10000 && personDetectionJSON.length() > 0) {
+      JsonDocument camDoc;
+      DeserializationError err = deserializeJson(camDoc, personDetectionJSON);
+      if (!err) {
+          doc["PersonDetected"] = camDoc["detected"];
+          doc["PersonTimestamp"] = camDoc["personTimestamp"];
+          Serial.println(F("camera transmission succesful"));
+      } else {
+          doc["PersonDetected"] = 0;
+          doc["PersonTimestamp"] = 0;
+      }
+  } else {
+      doc["PersonDetected"] = 0;
+      doc["PersonTimestamp"] = 0;
+  }
+
+   // 4. Send data over LoRa
     String jsonString;
     serializeJson(doc, jsonString);
 

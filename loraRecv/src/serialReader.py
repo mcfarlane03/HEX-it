@@ -1,296 +1,259 @@
-import pygame
+import numpy as np
 import math
-import serial
+import open3d as o3d
+from collections import deque
+from scipy.spatial.transform import Rotation as R
+import time
 import json
+import serial
 from serial import SerialException
 
-# Initialize pygame
-pygame.init()
+class LidarMappingSystem:
+    def __init__(self, serial_port='COM3', baud_rate=115200):
+        # Sensor data storage
+        self.sensor_data = {
+            "Distance": 0,
+            "Temperature": 0.0,
+            "Pressure": 0.0,
+            "Altitude": 0.0,
+            "Acceleration_X": 0.0,
+            "Acceleration_Y": 0.0,
+            "Acceleration_Z": 0.0,
+            "Rotation_X": 0.0,
+            "Rotation_Y": 0.0,
+            "Rotation_Z": 0.0,
+            "PersonDetected": 0,
+            "PersonTimestamp": None
 
-# Screen dimensions
-WIDTH, HEIGHT = 1500, 900
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("LiDAR Sensor Dashboard with Controls")
+        }
+        
+        # Mapping parameters
+        self.keyframes = deque(maxlen=1000)
+        self.current_pose = np.eye(4)  # Identity matrix as initial pose
+        self.map_points = []
+        self.last_update_time = time.time()
+        
+        # LiDAR parameters
+        self.min_distance = 2.0  # 2cm
+        self.max_distance = 400.0  # 4m
+        self.current_angle = 0
+        self.sweep_speed = 1  # Degrees per update
+        
+        # Initialize visualization
+        self.init_visualization()
+        
+        # Initialize serial connection
+        try:
+            self.ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
+            print(f"Connected to {serial_port} at {baud_rate} baud")
+        except SerialException as e:
+            print(f"Could not open serial port: {e}")
+            print("Running in simulation mode")
+            self.ser = None
 
-# Colors
-GREEN = (98, 245, 31)
-DARK_GREEN = (0, 4, 0, 4)
-RED = (255, 10, 10)
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-BLUE = (0, 100, 255)
-SLIDER_COLOR = (70, 70, 70)
-SLIDER_HANDLE_COLOR = (150, 150, 150)
+    def init_visualization(self):
+        """Initialize Open3D visualization window"""
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window(window_name="3D LiDAR Mapping", width=1280, height=720)
+        
+        # Add coordinate frame and point cloud
+        self.pcd = o3d.geometry.PointCloud()
+        self.coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=20.0)
+        
+        # Add geometries to visualizer
+        self.vis.add_geometry(self.pcd)
+        self.vis.add_geometry(self.coordinate_frame)
+        
+        # Set default viewpoint
+        self.vis.get_view_control().set_zoom(0.8)
+        self.vis.get_render_option().point_size = 2.0
 
-# Sensor data
-sensor_data = {
-    "Distance": 0,
-    "Temperature": 0.0,
-    "Pressure": 0.0,
-    "Altitude": 0.0,
-    "Acceleration_X": 0.0,
-    "Acceleration_Y": 0.0,
-    "Acceleration_Z": 0.0,
-    "Rotation_X": 0.0,
-    "Rotation_Y": 0.0,
-    "Rotation_Z": 0.0
-}
-
-# Radar parameters (all in cm)
-iAngle = 0
-max_distance = 400  # 8 meters (800cm)
-min_distance = 2    # 2cm minimum distance
-sweep_speed = 1     # Default speed (degrees per frame)
-
-# Sliders
-class Slider:
-    def __init__(self, x, y, w, h, min_val, max_val, initial_val, label):
-        self.rect = pygame.Rect(x, y, w, h)
-        self.handle_rect = pygame.Rect(x, y - 5, 20, h + 10)
-        self.min = min_val
-        self.max = max_val
-        self.val = initial_val
-        self.label = label
-        self.dragging = False
-        self.update_handle_pos()
-
-    def update_handle_pos(self):
-        relative_val = (self.val - self.min) / (self.max - self.min)
-        self.handle_rect.x = self.rect.x + int(relative_val * self.rect.width) - 10
-
-    def draw(self, surface):
-        # Draw slider track
-        pygame.draw.rect(surface, SLIDER_COLOR, self.rect, border_radius=5)
-        # Draw slider handle
-        pygame.draw.rect(surface, SLIDER_HANDLE_COLOR, self.handle_rect, border_radius=5)
-        # Draw label and value
-        label_text = font.render(f"{self.label}:", True, WHITE)
-        value_text = font.render(f"{self.val:.1f}", True, WHITE)
-        surface.blit(label_text, (self.rect.x - 150, self.rect.y - 5))
-        surface.blit(value_text, (self.rect.x + self.rect.width + 10, self.rect.y - 5))
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.handle_rect.collidepoint(event.pos):
-                self.dragging = True
-        elif event.type == pygame.MOUSEBUTTONUP:
-            self.dragging = False
-        elif event.type == pygame.MOUSEMOTION and self.dragging:
-            # Calculate new value based on mouse position
-            mouse_x = max(self.rect.x, min(event.pos[0], self.rect.x + self.rect.width))
-            relative_pos = (mouse_x - self.rect.x) / self.rect.width
-            self.val = self.min + relative_pos * (self.max - self.min)
-            self.update_handle_pos()
-            return True
+    def read_sensor_data(self):
+        """Read and parse sensor data from serial port"""
+        if self.ser and self.ser.in_waiting > 0:
+            try:
+                data = self.ser.readline().decode('utf-8').strip()
+                if data:
+                    try:
+                        parsed_data = json.loads(data)
+                        # Update sensor data with available values
+                        for key in self.sensor_data:
+                            if key in parsed_data:
+                                self.sensor_data[key] = parsed_data[key]
+                        return True
+                    except json.JSONDecodeError:
+                        print(f"Failed to parse JSON: {data}")
+            except Exception as e:
+                print(f"Serial read error: {e}")
         return False
 
-# Create sliders (updated for cm)
-max_dist_slider = Slider(WIDTH - 400, 50, 200, 10, 50, 400, max_distance, "Max Distance (cm)")
-speed_slider = Slider(WIDTH - 400, 100, 200, 10, 0.1, 5, sweep_speed, "Sweep Speed (°/frame)")
-
-# Fonts
-try:
-    font = pygame.font.SysFont('consolas', 20)
-    medium_font = pygame.font.SysFont('consolas', 24)
-    large_font = pygame.font.SysFont('consolas', 30)
-    title_font = pygame.font.SysFont('consolas', 40)
-except:
-    font = pygame.font.SysFont('arial', 20)
-    medium_font = pygame.font.SysFont('arial', 24)
-    large_font = pygame.font.SysFont('arial', 30)
-    title_font = pygame.font.SysFont('arial', 40)
-
-# Serial connection
-try:
-    ser = serial.Serial('COM3', 115200, timeout=0.1)
-except SerialException:
-    print("Could not open serial port")
-    ser = None
-
-def draw_radar():
-    center_x = WIDTH // 3
-    center_y = int(0.8 * HEIGHT)
-    
-    # Draw arc lines based on current max distance (in meters for display)
-    arc_distances_m = [max_distance * 0.25 / 100, max_distance * 0.5 / 100, 
-                      max_distance * 0.75 / 100, max_distance / 100]
-    
-    for i, distance_m in enumerate(arc_distances_m):
-        coeff = ((i+1)/4) * 0.7  # 4 arcs evenly spaced
-        pygame.draw.arc(screen, GREEN, 
-                       (center_x - (coeff * WIDTH//2), center_y - (coeff * WIDTH//2), 
-                        coeff * WIDTH, coeff * WIDTH), 
-                       math.pi, 2 * math.pi, 2)
+    def scan_to_point(self, angle_deg, distance_cm):
+        """Convert a 2D LiDAR measurement to 3D point using altitude"""
+        if distance_cm < self.min_distance or distance_cm > self.max_distance:
+            return None
         
-        # Draw distance labels in meters
-        if i < 3:  # Don't draw label for max distance (it's shown elsewhere)
-            label_x = center_x + (coeff * WIDTH//2) * math.cos(math.pi/4)
-            label_y = center_y - (coeff * WIDTH//2) * math.sin(math.pi/4) - 20
-            label_text = font.render(f"{distance_m:.1f}m", True, GREEN)
-            screen.blit(label_text, (label_x, label_y))
-
-def draw_object():
-    center_x = WIDTH // 3
-    center_y = int(0.8 * HEIGHT)
-    distance = sensor_data["Distance"]  # Already in cm
-    
-    if min_distance <= distance <= max_distance:
-        # Scale distance to radar display
-        distance_ratio = distance / max_distance
-        pixsDistance = int(distance_ratio * 0.7 * (WIDTH//2))
+        # Convert to radians and calculate x,y coordinates
+        angle_rad = math.radians(angle_deg)
+        x = distance_cm * math.cos(angle_rad)
+        y = distance_cm * math.sin(angle_rad)
+        z = self.sensor_data["Altitude"] * 100  # Convert meters to cm
         
-        rad_angle = math.radians(iAngle)
-        cos_val = math.cos(rad_angle)
-        sin_val = math.sin(rad_angle)
+        return np.array([x, y, z, 1.0])  # Homogeneous coordinates
+
+    def estimate_pose(self, dt):
+        """Update pose estimation using IMU data (dead reckoning)"""
+        # Extract rotation rates and accelerations
+        gyro = np.array([
+            self.sensor_data["Rotation_X"],
+            self.sensor_data["Rotation_Y"],
+            self.sensor_data["Rotation_Z"]
+        ])
         
-        x1 = center_x + int(pixsDistance * cos_val)
-        y1 = center_y - int(pixsDistance * sin_val)
+        accel = np.array([
+            self.sensor_data["Acceleration_X"],
+            self.sensor_data["Acceleration_Y"],
+            self.sensor_data["Acceleration_Z"]
+        ])
         
-        # Draw object point
-        pygame.draw.circle(screen, RED, (x1, y1), 5)
+        # Calculate rotation update (simple integration)
+        rotation_update = R.from_euler('xyz', gyro * dt).as_matrix()
         
-        # Draw line to object
-        x2 = center_x + int(0.35 * WIDTH * cos_val)
-        y2 = center_y - int(0.35 * WIDTH * sin_val)
-        pygame.draw.line(screen, RED, (x1, y1), (x2, y2), 2)
+        # Apply rotation to current orientation
+        self.current_pose[:3, :3] = self.current_pose[:3, :3] @ rotation_update
+        
+        # Transform acceleration to world frame
+        accel_world = self.current_pose[:3, :3] @ accel
+        
+        # Simple double integration for position (gravity should be properly handled in real implementation)
+        self.current_pose[:3, 3] += accel_world * dt**2
 
-def draw_sweep_line():
-    center_x = WIDTH // 3
-    center_y = int(0.8 * HEIGHT)
-    
-    rad_angle = math.radians(iAngle)
-    x = center_x + int(0.65 * (WIDTH//3) * math.cos(rad_angle))
-    y = center_y - int(0.65 * (WIDTH//3) * math.sin(rad_angle))
-    
-    pygame.draw.line(screen, (30, 250, 60), (center_x, center_y), (x, y), 3)
+    def should_create_keyframe(self):
+        """Determine if we should create a new keyframe based on movement"""
+        if not self.keyframes:
+            return True  # Always create the first keyframe
+        
+        # Get the last keyframe's pose
+        last_kf_pose = self.keyframes[-1]["pose"]
+        
+        # Calculate translation difference
+        translation_diff = np.linalg.norm(self.current_pose[:3, 3] - last_kf_pose[:3, 3])
+        
+        # Calculate rotation difference
+        rot1 = R.from_matrix(self.current_pose[:3, :3])
+        rot2 = R.from_matrix(last_kf_pose[:3, :3])
+        rotation_diff = np.linalg.norm(rot1.as_rotvec() - rot2.as_rotvec())
+        
+        # Check altitude difference
+        altitude_diff = abs(self.sensor_data["Altitude"] - self.keyframes[-1]["altitude"])
+        
+        # Create keyframe if moved more than 10cm, rotated more than 5 degrees, or altitude changed more than 10cm
+        return (translation_diff > 10.0 or 
+                rotation_diff > math.radians(5.0) or 
+                altitude_diff > 0.1)
 
-def draw_sensor_data():
-    # Draw background panel
-    panel_width = WIDTH // 2.5
-    pygame.draw.rect(screen, (20, 20, 40), (WIDTH - panel_width - 20, 20, panel_width, HEIGHT - 40))
-    pygame.draw.rect(screen, GREEN, (WIDTH - panel_width - 20, 20, panel_width, HEIGHT - 40), 2)
-    
-    # Title
-    title = title_font.render("LiDAR Sensor Data & Controls", True, GREEN)
-    screen.blit(title, (WIDTH - panel_width - 20 + (panel_width - title.get_width()) // 2, 30))
-    
-    # Draw sliders
-    max_dist_slider.draw(screen)
-    speed_slider.draw(screen)
-    
-    # Data rows
-    y_offset = 150
-    row_height = 40
-    
-    def draw_data_row(label, value, unit=""):
-        nonlocal y_offset
-        label_text = medium_font.render(f"{label}:", True, WHITE)
-        value_text = medium_font.render(f"{value} {unit}", True, BLUE)
-        screen.blit(label_text, (WIDTH - panel_width, y_offset))
-        screen.blit(value_text, (WIDTH - panel_width + 200, y_offset))
-        y_offset += row_height
-    
-    # Display all sensor data (distance in cm)
-    draw_data_row("Distance", sensor_data["Distance"], "cm")
-    draw_data_row("Temperature", f"{sensor_data['Temperature']:.2f}", "°C")
-    draw_data_row("Pressure", f"{sensor_data['Pressure']:.2f}", "Pa")
-    draw_data_row("Altitude", f"{sensor_data['Altitude']:.2f}", "m")
-    
-    # Acceleration data
-    y_offset += 20
-    draw_data_row("Acceleration X", f"{sensor_data['Acceleration_X']:.4f}", "m/s²")
-    draw_data_row("Acceleration Y", f"{sensor_data['Acceleration_Y']:.4f}", "m/s²")
-    draw_data_row("Acceleration Z", f"{sensor_data['Acceleration_Z']:.4f}", "m/s²")
-    
-    # Rotation data
-    y_offset += 20
-    draw_data_row("Rotation X", f"{sensor_data['Rotation_X']:.4f}", "rad")
-    draw_data_row("Rotation Y", f"{sensor_data['Rotation_Y']:.4f}", "rad")
-    draw_data_row("Rotation Z", f"{sensor_data['Rotation_Z']:.4f}", "rad")
+    def create_keyframe(self, point):
+        """Create and store a new keyframe"""
+        if point is None:
+            return
+        
+        # Store keyframe data
+        keyframe = {
+            "pose": self.current_pose.copy(),
+            "point": point,
+            "altitude": self.sensor_data["Altitude"],
+            "timestamp": time.time()
+        }
+        
+        self.keyframes.append(keyframe)
+        
+        # Add point to global map
+        global_point = self.current_pose @ point
+        self.map_points.append(global_point[:3])  # Only store x,y,z
 
-def draw_status():
-    # Black background for status area
-    pygame.draw.rect(screen, BLACK, (0, int(0.9 * HEIGHT), WIDTH, HEIGHT))
-    
-    # Status text
-    distance = sensor_data["Distance"]
-    in_range = min_distance <= distance <= max_distance
-    
-    status_text = large_font.render("Status:", True, GREEN)
-    screen.blit(status_text, (20, int(0.92 * HEIGHT)))
-    
-    range_text = large_font.render(
-        f"Object: {'In Range' if in_range else 'Out of Range'}",
-        True, GREEN if in_range else RED
-    )
-    screen.blit(range_text, (150, int(0.92 * HEIGHT)))
-    
-    angle_text = large_font.render(f"Scan Angle: {iAngle}°", True, GREEN)
-    screen.blit(angle_text, (500, int(0.92 * HEIGHT)))
-    
-    if in_range:
-        distance_text = large_font.render(f"Distance: {distance} cm (Max: {max_distance}cm)", True, GREEN)
-        screen.blit(distance_text, (850, int(0.92 * HEIGHT)))
-
-def parse_lidar_data(data):
-    try:
-        return json.loads(data)
-    except json.JSONDecodeError:
-        return None
-
-def read_serial():
-    if ser and ser.in_waiting > 0:
-        try:
-            data = ser.readline().decode('utf-8').strip()
-            parsed = parse_lidar_data(data)
-            if parsed:
-                for key in sensor_data:
-                    if key in parsed:
-                        sensor_data[key] = parsed[key]
-        except Exception as e:
-            print(f"Serial error: {e}")
-
-def main():
-    global iAngle, max_distance, sweep_speed
-    
-    clock = pygame.time.Clock()
-    running = True
-    
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+    def update_visualization(self):
+        """Update the 3D visualization"""
+        if not self.map_points:
+            return
             
-            # Handle slider events
-            if max_dist_slider.handle_event(event):
-                max_distance = int(max_dist_slider.val)
-            if speed_slider.handle_event(event):
-                sweep_speed = speed_slider.val
+        # Update point cloud with current map points
+        self.pcd.points = o3d.utility.Vector3dVector(np.array(self.map_points))
         
-        # Read from serial port
-        read_serial()
+        # Set colors (optional)
+        colors = np.ones((len(self.map_points), 3)) * np.array([0.5, 0.5, 1.0])  # Blue points
+        self.pcd.colors = o3d.utility.Vector3dVector(colors)
         
-        # Update sweep angle with current speed
-        iAngle = (iAngle + sweep_speed) % 180
+        # Update coordinate frame to current position
+        self.coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=20.0, origin=self.current_pose[:3, 3]
+        )
         
-        # Clear screen with semi-transparent overlay for trail effect
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 10))
-        screen.blit(overlay, (0, 0))
+        # Update rendering
+        self.vis.update_geometry(self.pcd)
+        self.vis.update_geometry(self.coordinate_frame)
+        self.vis.poll_events()
+        self.vis.update_renderer()
+
+    def save_map(self, filename="3d_map.ply"):
+        """Save the generated point cloud to a PLY file"""
+        if not self.map_points:
+            print("No points to save")
+            return
+            
+        # Create a point cloud from map points
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(np.array(self.map_points))
         
-        # Draw all components
-        draw_radar()
-        draw_sweep_line()
-        draw_object()
-        draw_sensor_data()
-        draw_status()
-        
-        pygame.display.flip()
-        clock.tick(30)  # 30 FPS
-    
-    if ser:
-        ser.close()
-    pygame.quit()
+        # Save to file
+        o3d.io.write_point_cloud(filename, pcd)
+        print(f"Map saved to {filename}")
+
+    def run(self):
+        """Main processing loop"""
+        try:
+            print("Starting 3D mapping system...")
+            print("Press Ctrl+C to stop and save the map")
+            
+            while True:
+                # Get current time for delta calculation
+                current_time = time.time()
+                dt = current_time - self.last_update_time
+                self.last_update_time = current_time
+                
+                # Read sensor data
+                data_available = self.read_sensor_data()
+                
+                # Update angle (simulate sweep in simulation mode)
+                self.current_angle = (self.current_angle + self.sweep_speed) % 180
+                
+                # Update pose estimation
+                self.estimate_pose(dt)
+                
+                # Process current scan point
+                point = self.scan_to_point(self.current_angle, self.sensor_data["Distance"])
+                
+                # Create keyframe if needed
+                if point is not None and self.should_create_keyframe():
+                    self.create_keyframe(point)
+                
+                # Update visualization
+                self.update_visualization()
+                
+                # Print status occasionally (every 100 frames)
+                if len(self.map_points) % 100 == 0 and len(self.map_points) > 0:
+                    print(f"Map points: {len(self.map_points)}, Keyframes: {len(self.keyframes)}")
+                    print(f"Current altitude: {self.sensor_data['Altitude']:.2f}m")
+                
+                # Small delay to prevent CPU hogging
+                time.sleep(0.01)
+                
+        except KeyboardInterrupt:
+            print("\nMapping stopped by user")
+            self.save_map()
+            if self.ser:
+                self.ser.close()
+            self.vis.destroy_window()
+            print("Done!")
 
 if __name__ == "__main__":
-    main()
+    mapping = LidarMappingSystem()
+    mapping.run()
