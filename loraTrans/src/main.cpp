@@ -127,7 +127,7 @@ void setup(){
 void loop(){
 
     personDetected = false;
-    
+
     tflI2C.getData( tfDist, tfAddr);
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
@@ -139,16 +139,16 @@ void loop(){
     // doc["DistanceBack"] = distBack;
     doc["Timestamp"] = millis();
     doc["Distance"] = tfDist;
-    doc["Temperature"] = bmp.readTemperature();
+    doc["Temp"] = bmp.readTemperature();
     doc["Pressure"] = bmp.readPressure();
-    doc["Altitude"] = bmp.readAltitude(ALTITUDE);
-    doc["Acceleration_X"] = a.acceleration.x;
-    doc["Acceleration_Y"] = a.acceleration.y;
-    doc["Acceleration_Z"] = a.acceleration.z;
-    doc["Rotation_X"] = g.gyro.x;
-    doc["Rotation_Y"] = g.gyro.y;
-    doc["Rotation_Z"] = g.gyro.z;
-    doc["PersonDetected"] = personDetected; 
+    doc["Alti"] = bmp.readAltitude(ALTITUDE);
+    doc["Accel_X"] = a.acceleration.x;
+    doc["Accel_Y"] = a.acceleration.y;
+    doc["Accel_Z"] = a.acceleration.z;
+    doc["Rotat_X"] = g.gyro.x;
+    doc["Rotat_Y"] = g.gyro.y;
+    doc["Rotat_Z"] = g.gyro.z;
+    doc["Human"] = personDetected; 
 
    // 4. Send data over LoRa
     String jsonString;
