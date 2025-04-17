@@ -34,36 +34,37 @@
 
 // #define LIDAR_FRONT_ADDR TFL_DEF_ADR  // Default address (0x10)
 // #define LIDAR_BACK_ADDR  0x11         // Second LiDAR address
-//#define SERVO_PIN 15 
+#define SERVO_PIN 45 
 
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
 TFLI2C tflI2C;
-// TFLI2C tflFront;  // Front LiDAR
-// TFLI2C tflBack;   // Back LiDAR
 
-//Servo sweepServo;
+Servo sweepServo;
 
 Adafruit_BMP280 bmp; // I2C
 Adafruit_MPU6050 mpu; // I2C
 
-//int16_t  distFront, distBack;   // distance in centimeters
 int16_t  tfDist;    // distance in centimeters
 int16_t  tfAddr = TFL_DEF_ADR;  // Use this default I2C address
 
 bool personDetected = false;
 int txNumber = 0;
 String personDetectionJSON = "";  // to store camera messages
-int currentAngle = 0;
-int sweepDirection = 1;  // 1 = increasing, -1 = decreasing
 
-// Simplified structure - only detection status
+// Servo sweep variables
+int currentAngle = 0;
+bool sweepingUp = true;
+const int ANGLE_STEP = 5;  // Degrees to move per reading
+
+// ESP-NOW configuration
 typedef struct struct_message {
   bool detected;
 } struct_message;
 
 struct_message cameraData;
 
+// Function to handle incoming data from ESP-NOW
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&cameraData, incomingData, sizeof(cameraData));
   personDetected = cameraData.detected;
@@ -72,20 +73,39 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   Serial.println(personDetected ? "DETECTED" : "NOT DETECTED");
 }
 
-void setup(){
+// Function to update servo position
+void updateServoPosition() {
+  if (sweepingUp) {
+      currentAngle += ANGLE_STEP;
+      if (currentAngle >= 180) {
+          sweepingUp = false;
+          currentAngle = 180;
+      }
+  } else {
+      currentAngle -= ANGLE_STEP;
+      if (currentAngle <= 0) {
+          sweepingUp = true;
+          currentAngle = 0;
+      }
+  }
+  sweepServo.write(currentAngle);
+}
 
+
+void setup(){
+    
     //Turn Vext on to power Sensors
     pinMode(Vext,OUTPUT);
     digitalWrite(Vext, LOW);
 
     Serial.begin(115200);  // Initalize serial port
-    //Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // Initalize serial port for camera
     
     Wire.begin(SDA, SCL);           // Initalize Wire library
 
     // Initialize servo
-   // sweepServo.attach(SERVO_PIN);
-   // sweepServo.write(0);  // Start at 0 degrees
+    sweepServo.attach(SERVO_PIN);
+    sweepServo.write(0);  // Start at 0 degrees
+    currentAngle = 0;
 
     if (!bmp.begin(0x76)) {
         Serial.println("Could not find a valid BMP280 sensor, check wiring!");
@@ -128,6 +148,8 @@ void loop(){
 
     personDetected = false;
 
+    updateServoPosition(); // Move the servo to the next position
+
     tflI2C.getData( tfDist, tfAddr);
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
@@ -148,6 +170,7 @@ void loop(){
     doc["Rotat_X"] = g.gyro.x;
     doc["Rotat_Y"] = g.gyro.y;
     doc["Rotat_Z"] = g.gyro.z;
+    doc["Angle"] = currentAngle;  // Add servo angle to JSON
     doc["Human"] = personDetected; 
 
    // 4. Send data over LoRa

@@ -12,19 +12,18 @@ class LidarMappingSystem:
     def __init__(self, serial_port='COM3', baud_rate=115200):
         # Sensor data storage
         self.sensor_data = {
+            "Timestamp": None,
             "Distance": 0,
-            "Temperature": 0.0,
+            "Temp": 0.0,
             "Pressure": 0.0,
-            "Altitude": 0.0,
-            "Acceleration_X": 0.0,
-            "Acceleration_Y": 0.0,
-            "Acceleration_Z": 0.0,
-            "Rotation_X": 0.0,
-            "Rotation_Y": 0.0,
-            "Rotation_Z": 0.0,
-            "PersonDetected": 0,
-            "PersonTimestamp": None
-
+            "Alti": 0.0,
+            "Accel_X": 0.0,
+            "Accel_Y": 0.0,
+            "Accel_Z": 0.0,
+            "Rotat_X": 0.0,
+            "Rotat_Y": 0.0,
+            "Rotat_Z": 0.0,
+            "Human": False
         }
         
         # Mapping parameters
