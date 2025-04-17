@@ -1,3 +1,10 @@
+/**
+ * The code initializes various sensors and communication modules, reads sensor data, detects a person using a camera, and transmits sensor data and person detection status over LoRa communication.
+ * 
+ * @param mac The `mac` parameter in the `OnDataRecv` function represents the MAC address of the sender of the data received via ESP-NOW. It is a unique identifier assigned to each device for communication over a network.
+ * @param incomingData The `incomingData` parameter in the `OnDataRecv` function is a pointer to the data received over the network. It is of type `const uint8_t*`, which means it is a pointer to an array of unsigned 8-bit integers (bytes) that represent the received data.
+ * @param len The `len` parameter in the `OnDataRecv` function represents the length of the incoming data array that is being received. It indicates the size of the data being received from the sender device.
+ */
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
 #include <TFLI2C.h>      // TFLuna-I2C Library v.0.1.1
@@ -8,6 +15,8 @@
 #include <ArduinoJson.h>
 
 #include <RadioLib.h>
+#include <esp_now.h>
+#include <WiFi.h>
 
 #define Vext 36
 #define SDA 33
@@ -42,11 +51,26 @@ Adafruit_MPU6050 mpu; // I2C
 int16_t  tfDist;    // distance in centimeters
 int16_t  tfAddr = TFL_DEF_ADR;  // Use this default I2C address
 
+bool personDetected = false;
 int txNumber = 0;
 String personDetectionJSON = "";  // to store camera messages
-unsigned long lastPersonTimestamp = 0;
 int currentAngle = 0;
 int sweepDirection = 1;  // 1 = increasing, -1 = decreasing
+
+// Simplified structure - only detection status
+typedef struct struct_message {
+  bool detected;
+} struct_message;
+
+struct_message cameraData;
+
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&cameraData, incomingData, sizeof(cameraData));
+  personDetected = cameraData.detected;
+  
+  Serial.print("Person detection update: ");
+  Serial.println(personDetected ? "DETECTED" : "NOT DETECTED");
+}
 
 void setup(){
 
@@ -55,7 +79,7 @@ void setup(){
     digitalWrite(Vext, LOW);
 
     Serial.begin(115200);  // Initalize serial port
-    Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // Initalize serial port for camera
+    //Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // Initalize serial port for camera
     
     Wire.begin(SDA, SCL);           // Initalize Wire library
 
@@ -89,29 +113,21 @@ void setup(){
       while (true) { delay(10); }
     }
 
+    WiFi.mode(WIFI_STA);
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("ESP-NOW init failed");
+        return;
+    }
+    esp_now_register_recv_cb(OnDataRecv);
+
+    Serial.println("System ready - waiting for data...");
+
 }
 
 void loop(){
-    // 1. Read from Serial2 if any camera data available
-    while (Serial2.available()) {
-      personDetectionJSON = Serial2.readStringUntil('\n');
-      lastPersonTimestamp = millis();
-      Serial.println("Got camera data:");
-      Serial.println(personDetectionJSON);
-  }
 
-    // Serial.println("------------------TFLuna------------------");
- // 2. Get sensor data from both LiDARs
-  // if (tflFront.getData(distFront, LIDAR_FRONT_ADDR)) {
-  //   Serial.print("Front Distance: ");
-  //   Serial.println(distFront);
-  // }
-
-  // if (tflBack.getData(distBack, LIDAR_BACK_ADDR)) {
-  //   Serial.print("Back Distance: ");
-  //   Serial.println(distBack);
-  // }
-
+    personDetected = false;
+    
     tflI2C.getData( tfDist, tfAddr);
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
@@ -121,6 +137,7 @@ void loop(){
     JsonDocument doc;
     // doc["DistanceFront"] = distFront;
     // doc["DistanceBack"] = distBack;
+    doc["Timestamp"] = millis();
     doc["Distance"] = tfDist;
     doc["Temperature"] = bmp.readTemperature();
     doc["Pressure"] = bmp.readPressure();
@@ -131,23 +148,7 @@ void loop(){
     doc["Rotation_X"] = g.gyro.x;
     doc["Rotation_Y"] = g.gyro.y;
     doc["Rotation_Z"] = g.gyro.z;
-
-    // 3. Add camera detection if received recently
-    if (millis() - lastPersonTimestamp < 10000 && personDetectionJSON.length() > 0) {
-      JsonDocument camDoc;
-      DeserializationError err = deserializeJson(camDoc, personDetectionJSON);
-      if (!err) {
-          doc["PersonDetected"] = camDoc["detected"];
-          doc["PersonTimestamp"] = camDoc["personTimestamp"];
-          Serial.println(F("camera transmission succesful"));
-      } else {
-          doc["PersonDetected"] = 0;
-          doc["PersonTimestamp"] = 0;
-      }
-  } else {
-      doc["PersonDetected"] = 0;
-      doc["PersonTimestamp"] = 0;
-  }
+    doc["PersonDetected"] = personDetected; 
 
    // 4. Send data over LoRa
     String jsonString;
