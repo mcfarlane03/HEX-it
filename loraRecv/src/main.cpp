@@ -23,6 +23,22 @@
 
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
+// Define the struct
+typedef struct SensorData {
+  uint32_t timestamp;
+  int16_t distance;
+  float temperature;
+  float altitude;
+  float accel_x;
+  float accel_y;
+  float accel_z;
+  float rotat_x;
+  float rotat_y;
+  float rotat_z;
+  int16_t angle;
+  bool sweep;
+  bool human;
+} SensorData;
 
 int count = 0;
 
@@ -75,32 +91,40 @@ void setup(){
   }
 }
 
-void loop(){
-  if(receivedFlag) {
-    // reset flag
+void loop() {
+  if (receivedFlag) {
     receivedFlag = false;
 
-    // you can read received data as an Arduino String
-    String str;
-    int state = radio.readData(str);
+    SensorData data;
+    int state = radio.readData((byte *)&data, sizeof(SensorData));
 
     if (state == RADIOLIB_ERR_NONE) {
-        // // packet was successfully received
-        // Serial.println(F("[SX1262] Received packet!"));
-  
-        // // print data of the packet
-        // Serial.print(F("[SX1262] Data:\t\t"));
-        Serial.println(str);
-  
-     }
+      // Successfully received struct
+      Serial.println(F("[Receiver] Received sensor data:"));
 
-     else 
-     {
-        // some other error occurred
-        Serial.print(F("failed, code "));
-        Serial.println(state);
-  
+      Serial.printf("Timestamp: %lu ms\n", data.timestamp);
+      Serial.printf("Distance: %d cm\n", data.distance);
+      Serial.printf("Temperature: %.2f °C\n", data.temperature);
+      Serial.printf("Altitude: %.2f m\n", data.altitude);
+
+      Serial.printf("Accel X: %.2f m/s²\n", data.accel_x);
+      Serial.printf("Accel Y: %.2f m/s²\n", data.accel_y);
+      Serial.printf("Accel Z: %.2f m/s²\n", data.accel_z);
+
+      Serial.printf("Gyro X: %.2f rad/s\n", data.rotat_x);
+      Serial.printf("Gyro Y: %.2f rad/s\n", data.rotat_y);
+      Serial.printf("Gyro Z: %.2f rad/s\n", data.rotat_z);
+
+      Serial.printf("Servo Angle: %d°\n", data.angle);
+      Serial.printf("Sweeping %s\n", data.sweep ? "up" : "down");
+      Serial.printf("Person Detected: %s\n", data.human ? "YES" : "NO");
+
+    } else {
+      Serial.print(F("Receive failed, code "));
+      Serial.println(state);
     }
-      delay(500);
+
+    radio.startReceive();  // Restart receive mode
+    delay(10);
   }
 }
