@@ -16,7 +16,6 @@
 #include <RadioLib.h>
 #include <esp_now.h>
 #include <WiFi.h>
-#include <vector>
 
 // Pin and constant definitions
 #define Vext 36
@@ -33,9 +32,11 @@
 
 // Scanning parameters
 #define ANGLE_STEP 5
-#define SCAN_POINTS 37  // (180/5 + 1)
-#define MIN_PASSABLE_GAP 20  // cm
-#define MIN_ANGLE_CHANGE 3   // degrees
+#define ARRAY_SIZE 180  // Fixed array size (one per degree)
+#define MAX_ANGLE 180   // Maximum servo angle
+#define INVALID_DISTANCE 900  // Invalid distance value
+#define MIN_PASSABLE_GAP 20   // Minimum passable gap in cm
+#define MIN_ANGLE_CHANGE 3    // Minimum angle change to redirect (degrees)
 
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
@@ -54,6 +55,11 @@ int currentAngle = 0;
 bool personDetected = false;
 bool sweepInProgress = false;
 
+// Add global variables for gap detection
+int lastValidDistance = 0;
+int dataIndex = 0;
+bool retraceMode = false;
+
 // ESP-NOW configuration
 typedef struct struct_message {
   bool detected;
@@ -63,13 +69,15 @@ struct_message cameraData;
 
 typedef struct SensorData {
   uint32_t timestamp;
-  std::vector<int16_t> distances;
-  float temperature;           // Single temperature reading per sweep
-  std::vector<float> altitudes;
-  std::vector<float> accelX, accelY, accelZ;
-  std::vector<float> gyroX, gyroY, gyroZ;
-  std::vector<int16_t> angles;
+  int16_t distances[180];    
+  float temperature;         
+  float altitudes[180];      
+  float accelX[180], accelY[180], accelZ[180];  
+  float gyroX[180], gyroY[180], gyroZ[180];     
+  int16_t angles[180];       // Servo angles
   bool humanDetected;
+  int dataCount;            // Number of valid readings
+  bool isPassable[180];     // Track passable points
 } SensorData;
 
 SensorData data;
@@ -138,45 +146,109 @@ void setup(){
 }
 
 void loop() {
+  
+  personDetected = false;
+  
   if (currentAngle == 0) {
-      // Start new sweep
-      sweepInProgress = true;
-      // Take initial temperature reading
-      data.temperature = bmp.readTemperature();
+    sweepInProgress = true;
+    dataIndex = 0;
+    data.temperature = bmp.readTemperature();
+    lastValidDistance = 0;
   }
 
   // Take sensor readings
   tflI2C.getData(tfDist, tfAddr);
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
-  
-  // Store readings in vectors
-  data.distances.push_back(tfDist);
-  data.angles.push_back(currentAngle);
-  data.altitudes.push_back(bmp.readAltitude(ALTITUDE));
-  data.accelX.push_back(a.acceleration.x);
-  data.accelY.push_back(a.acceleration.y);
-  data.accelZ.push_back(a.acceleration.z);
-  data.gyroX.push_back(g.gyro.x);
-  data.gyroY.push_back(g.gyro.y);
-  data.gyroZ.push_back(g.gyro.z);
 
-  // Move to next angle
-  currentAngle += ANGLE_STEP;
-  sweepServo.write(currentAngle);
-
-  // Check if sweep complete
-  if (currentAngle > 180 && sweepInProgress) {
-      // Use personDetected status as is - it will be true if person was detected at any point
-      data.humanDetected = personDetected;
-      data.timestamp = millis();
+  // Check for significant distance changes during sweep
+  if (lastValidDistance > 0) {
+    int distanceDiff = abs(tfDist - lastValidDistance);
+    
+    if (distanceDiff > MIN_PASSABLE_GAP) {
+        // Calculate retracement angle between previous and current angle
+        int previousAngle = currentAngle - ANGLE_STEP;
+        float s = distanceDiff;
+        float next_angle = s / tfDist;
+        float deg_angle = next_angle * (180.0 / PI);
+        int newAngle = previousAngle + (int)deg_angle;
         
-      // Transmit complete sweep data
-      int state = radio.transmit((uint8_t*)&data, sizeof(data));
+        // Only retrace if angle difference is significant
+        if (abs(newAngle - previousAngle) >= MIN_ANGLE_CHANGE) {
+            // Store current position
+            int returnAngle = currentAngle;
+            
+            // Move to calculated angle
+            sweepServo.write(newAngle);
+            delay(100);  // Allow servo to settle
+            
+            // Take new reading at calculated angle
+            tflI2C.getData(tfDist, tfAddr);
+            mpu.getEvent(&a, &g, &temp);
+            
+            // Store retracement data point
+            if (dataIndex < ARRAY_SIZE) {
+                data.distances[dataIndex] = tfDist;
+                data.angles[dataIndex] = newAngle;
+                data.altitudes[dataIndex] = bmp.readAltitude(ALTITUDE);
+                data.accelX[dataIndex] = a.acceleration.x;
+                data.accelY[dataIndex] = a.acceleration.y;
+                data.accelZ[dataIndex] = a.acceleration.z;
+                data.gyroX[dataIndex] = g.gyro.x;
+                data.gyroY[dataIndex] = g.gyro.y;
+                data.gyroZ[dataIndex] = g.gyro.z;
+                data.isPassable[dataIndex] = (distanceDiff < MIN_PASSABLE_GAP);
+                dataIndex++;
+              }
+                
+              // Return to original sweep position
+              currentAngle = returnAngle;
+              sweepServo.write(returnAngle);
+              delay(100);
+          }
+      }
+  }
+  
+  // Store regular sweep reading
+  if (dataIndex < ARRAY_SIZE) {
+      data.distances[dataIndex] = tfDist;
+      data.angles[dataIndex] = currentAngle;
+      data.altitudes[dataIndex] = bmp.readAltitude(ALTITUDE);
+      data.accelX[dataIndex] = a.acceleration.x;
+      data.accelY[dataIndex] = a.acceleration.y;
+      data.accelZ[dataIndex] = a.acceleration.z;
+      data.gyroX[dataIndex] = g.gyro.x;
+      data.gyroY[dataIndex] = g.gyro.y;
+      data.gyroZ[dataIndex] = g.gyro.z;
+      data.isPassable[dataIndex] = true;
+      dataIndex++;
+      lastValidDistance = tfDist;
+  }
+    // Continue normal sweep
+    currentAngle += ANGLE_STEP;
+    sweepServo.write(currentAngle);
+
+    // Check if sweep complete or array full
+    if (currentAngle >= MAX_ANGLE && sweepInProgress) {
+        // Fill remaining array positions with invalid values if any
+        while (dataIndex < ARRAY_SIZE) {
+            data.distances[dataIndex] = INVALID_DISTANCE;
+            data.angles[dataIndex] = currentAngle;
+            data.isPassable[dataIndex] = false;
+            dataIndex++;
+        }
+
+        data.dataCount = dataIndex;
+        data.humanDetected = personDetected;
+        data.timestamp = millis();
+
+        // Transmit complete sweep data
+        int state = radio.transmit((uint8_t*)&data, sizeof(data));
+        
         
       if (state == RADIOLIB_ERR_NONE) {
           Serial.println(F("Sweep data transmitted successfully"));
-          Serial.printf("Points collected: %d\n", data.distances.size());
+          Serial.printf("Points collected: %d\n", data.dataCount);
 
       // print measured data rate
       Serial.print(F("[SX1262] Datarate:\t"));
@@ -201,17 +273,9 @@ void loop() {
   currentAngle = 0;
   sweepServo.write(0);
   sweepInProgress = false;
-  
-  // Clear vectors for next sweep
-  data.distances.clear();
-  data.angles.clear();
-  data.altitudes.clear();
-  data.accelX.clear();
-  data.accelY.clear();
-  data.accelZ.clear();
-  data.gyroX.clear();
-  data.gyroY.clear();
-  data.gyroZ.clear();
+  dataIndex = 0;
+  lastValidDistance = 0;
+
       
   delay(100);
   }
