@@ -26,22 +26,19 @@ SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 // Define the struct
 typedef struct SensorData {
   uint32_t timestamp;
-  int16_t distance;
-  float temperature;
-  float altitude;
-  float accel_x;
-  float accel_y;
-  float accel_z;
-  float rotat_x;
-  float rotat_y;
-  float rotat_z;
-  int16_t angle;
-  bool sweep;
-  bool human;
+  int16_t distances[180];    
+  float temperature;         
+  float altitudes[180];      
+  float accelX[180], accelY[180], accelZ[180];  
+  float gyroX[180], gyroY[180], gyroZ[180];     
+  int16_t angles[180];       
+  bool humanDetected;
+  int dataCount;            
+  bool isPassable[180];     
 } SensorData;
 
 int count = 0;
-
+#define INVALID_DISTANCE -1
 volatile bool receivedFlag = false;
 
 // this function is called when a complete packet
@@ -95,29 +92,36 @@ void loop() {
   if (receivedFlag) {
     receivedFlag = false;
 
-    SensorData data;
-    int state = radio.readData((byte *)&data, sizeof(SensorData));
+    SensorData receivedData;
+    int state = radio.readData((byte *)&receivedData, sizeof(SensorData));
 
     if (state == RADIOLIB_ERR_NONE) {
       // Successfully received struct
-      Serial.println(F("[Receiver] Received sensor data:"));
+      Serial.println(F("[Receiver] Received sweep data:"));
+      Serial.printf("Timestamp: %lu ms\n", receivedData.timestamp);
+      Serial.printf("Temperature: %.2f °C\n", receivedData.temperature);
+      Serial.printf("Valid data points: %d\n", receivedData.dataCount);
+      Serial.printf("Human detected: %s\n", receivedData.humanDetected ? "YES" : "NO");
 
-      Serial.printf("Timestamp: %lu ms\n", data.timestamp);
-      Serial.printf("Distance: %d cm\n", data.distance);
-      Serial.printf("Temperature: %.2f °C\n", data.temperature);
-      Serial.printf("Altitude: %.2f m\n", data.altitude);
-
-      Serial.printf("Accel X: %.2f m/s²\n", data.accel_x);
-      Serial.printf("Accel Y: %.2f m/s²\n", data.accel_y);
-      Serial.printf("Accel Z: %.2f m/s²\n", data.accel_z);
-
-      Serial.printf("Gyro X: %.2f rad/s\n", data.rotat_x);
-      Serial.printf("Gyro Y: %.2f rad/s\n", data.rotat_y);
-      Serial.printf("Gyro Z: %.2f rad/s\n", data.rotat_z);
-
-      Serial.printf("Servo Angle: %d°\n", data.angle);
-      Serial.printf("Sweeping %s\n", data.sweep ? "up" : "down");
-      Serial.printf("Person Detected: %s\n", data.human ? "YES" : "NO");
+      // Print all valid measurements
+      for (int i = 0; i < receivedData.dataCount; i++) {
+          if (receivedData.distances[i] != INVALID_DISTANCE) {
+              Serial.printf("\nPoint %d:\n", i);
+              Serial.printf("  Angle: %d°\n", receivedData.angles[i]);
+              Serial.printf("  Distance: %d cm\n", receivedData.distances[i]);
+              Serial.printf("  Altitude: %.2f m\n", receivedData.altitudes[i]);
+              Serial.printf("  Acceleration (x,y,z): %.2f, %.2f, %.2f\n", 
+                  receivedData.accelX[i], 
+                  receivedData.accelY[i], 
+                  receivedData.accelZ[i]);
+              Serial.printf("  Gyro (x,y,z): %.2f, %.2f, %.2f\n",
+                  receivedData.gyroX[i], 
+                  receivedData.gyroY[i], 
+                  receivedData.gyroZ[i]);
+              Serial.printf("  Passable: %s\n", 
+                  receivedData.isPassable[i] ? "YES" : "NO");
+          }
+      }
 
     } else {
       Serial.print(F("Receive failed, code "));
