@@ -129,16 +129,3 @@ void loop() {
     }
     delay(100);
 }
-        // Send JSON result via Serial2
-        // Serial2.print("{\"detected\":1");
-        // Serial2.print(",\"personTimestamp\":");
-        // Serial2.print(timestamp);
-        // Serial2.println("}");
-
-     //Debuging
-//         Serial.print("Person detected at ");
-//         Serial.println(timestamp);
-//     }else{
-//         lastStatus = currentStatus;
-//     }
-// }

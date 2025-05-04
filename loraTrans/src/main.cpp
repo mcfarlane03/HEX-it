@@ -69,15 +69,15 @@ struct_message cameraData;
 
 typedef struct SensorData {
   uint32_t timestamp;
-  int16_t distances[180];    
+  int16_t distances[40];    
   float temperature;         
-  float altitudes[180];      
-  float accelX[180], accelY[180], accelZ[180];  
-  float gyroX[180], gyroY[180], gyroZ[180];     
-  int16_t angles[180];       // Servo angles
+  float altitudes[40];      
+  float accelX[40], accelY[40], accelZ[40];  
+  float gyroX[40], gyroY[180], gyroZ[40];     
+  int16_t angles[40];       // Servo angles
   bool humanDetected;
   int dataCount;            // Number of valid readings
-  bool isPassable[180];     // Track passable points
+  bool isPassable[40];     // Track passable points
 } SensorData;
 
 SensorData data;
