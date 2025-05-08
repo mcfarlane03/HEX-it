@@ -1,9 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
-#include <TFLI2C.h>      // TFLuna-I2C Library v.0.1.1
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BMP280.h>
-#include <Adafruit_MPU6050.h>
 #include <ArduinoJson.h>
 #include <RadioLib.h>
 
@@ -21,24 +17,26 @@
 #define RESET    12
 #define BUSY     13
 
+
+struct sensor_data {
+  int8_t device_id;
+  int16_t range[45];
+  int16_t angle[45];
+  float temperature;
+  int32_t timestamp;
+  bool personDetectedFlag;
+};
+
+union rx_packet {
+  uint8_t buffer[sizeof(sensor_data)];
+  sensor_data data;
+};
+
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
-// Define the struct
-typedef struct SensorData {
-  uint32_t timestamp;
-  int16_t distances[180];    
-  float temperature;         
-  float altitudes[180];      
-  float accelX[180], accelY[180], accelZ[180];  
-  float gyroX[180], gyroY[180], gyroZ[180];     
-  int16_t angles[180];       
-  bool humanDetected;
-  int dataCount;            
-  bool isPassable[180];     
-} SensorData;
 
 int count = 0;
-#define INVALID_DISTANCE -1
+
 volatile bool receivedFlag = false;
 
 // this function is called when a complete packet
@@ -88,47 +86,52 @@ void setup(){
   }
 }
 
-void loop() {
-  if (receivedFlag) {
+void loop(){
+
+  if(receivedFlag) {
+    // reset flag
     receivedFlag = false;
 
-    SensorData receivedData;
-    int state = radio.readData((byte *)&receivedData, sizeof(SensorData));
+    // you can read received data as an Arduino String
+    rx_packet packet;
+    int state = radio.readData(packet.buffer, sizeof(packet.buffer));
 
     if (state == RADIOLIB_ERR_NONE) {
-      // Successfully received struct
-      Serial.println(F("[Receiver] Received sweep data:"));
-      Serial.printf("Timestamp: %lu ms\n", receivedData.timestamp);
-      Serial.printf("Temperature: %.2f °C\n", receivedData.temperature);
-      Serial.printf("Valid data points: %d\n", receivedData.dataCount);
-      Serial.printf("Human detected: %s\n", receivedData.humanDetected ? "YES" : "NO");
+      // // packet was successfully received
+      // Serial.println(F("[SX1262] Received packet!"));
 
-      // Print all valid measurements
-      for (int i = 0; i < receivedData.dataCount; i++) {
-          if (receivedData.distances[i] != INVALID_DISTANCE) {
-              Serial.printf("\nPoint %d:\n", i);
-              Serial.printf("  Angle: %d°\n", receivedData.angles[i]);
-              Serial.printf("  Distance: %d cm\n", receivedData.distances[i]);
-              Serial.printf("  Altitude: %.2f m\n", receivedData.altitudes[i]);
-              Serial.printf("  Acceleration (x,y,z): %.2f, %.2f, %.2f\n", 
-                  receivedData.accelX[i], 
-                  receivedData.accelY[i], 
-                  receivedData.accelZ[i]);
-              Serial.printf("  Gyro (x,y,z): %.2f, %.2f, %.2f\n",
-                  receivedData.gyroX[i], 
-                  receivedData.gyroY[i], 
-                  receivedData.gyroZ[i]);
-              Serial.printf("  Passable: %s\n", 
-                  receivedData.isPassable[i] ? "YES" : "NO");
-          }
+      // // print data of the packet
+      // Serial.print(F("[SX1262] Data:\t\t"));
+      // Serial.println(str);
+
+      Serial.print("Received from device: ");
+      Serial.println(packet.data.device_id);
+
+
+      
+      // Print sample data
+      for(int i = 0; i < 45; i += 5) {
+        Serial.print(packet.data.range[i]); Serial.print("cm @ ");
+        Serial.print(packet.data.angle[i]); Serial.println("°");
       }
 
-    } else {
-      Serial.print(F("Receive failed, code "));
-      Serial.println(state);
-    }
+      Serial.print("Temperature: ");
+      Serial.print(packet.data.temperature);
+      Serial.println(" °C");
+      Serial.print("Timestamp: ");
+      Serial.println(packet.data.timestamp);
+      Serial.print("Person detected: ");
+      Serial.println(packet.data.personDetectedFlag ? "Yes" : "No");
+      Serial.println("------------------End of packet------------------");
+     }
 
-    radio.startReceive();  // Restart receive mode
-    delay(10);
+     else 
+     {
+        // some other error occurred
+        Serial.print(F("failed, code "));
+        Serial.println(state);
+  
+    }
   }
 }
+j

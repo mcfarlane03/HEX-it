@@ -1,26 +1,21 @@
-/**
- * The code initializes various sensors and communication modules, reads sensor data, detects a person using a camera, and transmits sensor data and person detection status over LoRa communication.
- * 
- * @param mac The `mac` parameter in the `OnDataRecv` function represents the MAC address of the sender of the data received via ESP-NOW. It is a unique identifier assigned to each device for communication over a network.
- * @param incomingData The `incomingData` parameter in the `OnDataRecv` function is a pointer to the data received over the network. It is of type `const uint8_t*`, which means it is a pointer to an array of unsigned 8-bit integers (bytes) that represent the received data.
- * @param len The `len` parameter in the `OnDataRecv` function represents the length of the incoming data array that is being received. It indicates the size of the data being received from the sender device.
- */
-
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
 #include <TFLI2C.h>      // TFLuna-I2C Library v.0.1.1
-#include <ESP32Servo.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
-#include <RadioLib.h>
-#include <esp_now.h>
-#include <WiFi.h>
+#include <ArduinoJson.h>
 
-// Pin and constant definitions
+#include <RadioLib.h>
+ #include <esp_now.h>
+ #include <WiFi.h>
+  #include <ESP32Servo.h>
+
 #define Vext 36
 #define SDA 33
 #define SCL 34
+
+#define ALTITUDE 1013.25
 
 #define DIO_1    14
 #define NSS      8
@@ -28,37 +23,29 @@
 #define BUSY     13
 
 #define SERVO_PIN 45 
-#define ALTITUDE 1013.25
 
-// Scanning parameters
-#define ANGLE_STEP 5
-#define ARRAY_SIZE 180  // Fixed array size (one per degree)
-#define MAX_ANGLE 180   // Maximum servo angle
-#define INVALID_DISTANCE 900  // Invalid distance value
-#define MIN_PASSABLE_GAP 20   // Minimum passable gap in cm
-#define MIN_ANGLE_CHANGE 3    // Minimum angle change to redirect (degrees)
+ // Scanning parameters
+ #define ANGLE_STEP 5
+ #define ARRAY_SIZE 45  
+ #define MAX_ANGLE 180   // Maximum servo angle
+ #define INVALID_DISTANCE 900  // Invalid distance value
+ #define MIN_PASSABLE_GAP 20   // Minimum passable gap in cm
+ #define MIN_ANGLE_CHANGE 3    // Minimum angle change to redirect (degrees)
+ 
 
-SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
+struct sensor_data {
+  int8_t device_id; // Device ID
+  int16_t range[45]; // Distance in centimeters
+  int16_t angle[45]; // Angle in degrees
+  float temperature; // Temperature in degrees Celsius
+  int32_t timestamp; // Timestamp in milliseconds
+  bool personDetectedFlag; // Person detected flag
+} typedef sensor_data; // Define the data structure 
 
-TFLI2C tflI2C;
-
-Servo sweepServo;
-
-Adafruit_BMP280 bmp; // I2C
-Adafruit_MPU6050 mpu; // I2C
-
-
-// Global variables
-int16_t tfDist; // distance in centimeters
-int16_t tfAddr = TFL_DEF_ADR; // Use this default I2C address
-int currentAngle = 0;
-bool personDetected = false;
-bool sweepInProgress = false;
-
-// Add global variables for gap detection
-int lastValidDistance = 0;
-int dataIndex = 0;
-bool retraceMode = false;
+union tx_packet{
+  uint8_t buffer[sizeof(sensor_data)]; // Buffer to hold the data
+  sensor_data data; // Data to be transmitted
+};
 
 // ESP-NOW configuration
 typedef struct struct_message {
@@ -67,24 +54,239 @@ typedef struct struct_message {
 
 struct_message cameraData;
 
-typedef struct SensorData {
-  uint32_t timestamp;
-  int16_t distances[40];    
-  float temperature;         
-  float altitudes[40];      
-  float accelX[40], accelY[40], accelZ[40];  
-  float gyroX[40], gyroY[180], gyroZ[40];     
-  int16_t angles[40];       // Servo angles
-  bool humanDetected;
-  int dataCount;            // Number of valid readings
-  bool isPassable[40];     // Track passable points
-} SensorData;
-
-SensorData data;
+SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
+tx_packet packet; // Create packet instance
 
 
-// Function to handle incoming data from ESP-NOW
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+TFLI2C tflI2C;
+Adafruit_BMP280 bmp; // I2C
+Adafruit_MPU6050 mpu; // I2C
+Servo sweepServo; // Servo object
+
+int16_t  tfDist;    // distance in centimeters
+int16_t  tfAddr = TFL_DEF_ADR;  // Use this default I2C address
+
+int currentAngle = 0;
+bool personDetected = false;
+bool sweepInProgress = false;
+int txNumber = 0;
+int dataIndex = 0;          
+int lastValidDistance = 0 ;  
+
+uint32_t currentTime = 0;
+
+void initializeSensors();
+void initializeRadio();
+void initializeEspNow();
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
+float calculateRelativeAngle(float gyroZ, int servoAngle);
+
+void setup(){
+
+  Serial.begin(115200);
+
+  initializeSensors(); // Initialize sensors
+  initializeRadio();   // Initialize radio
+  initializeEspNow(); // Initialize ESP-NOW
+  
+  packet.data.device_id = 1;
+
+}
+
+void loop(){
+  //personDetected = false;
+  
+  if (currentAngle == 0) {
+    sweepInProgress = true;
+    dataIndex = 0;
+    packet.data.temperature = bmp.readTemperature();
+    lastValidDistance = 0;
+    
+  }
+
+
+  // Serial.println("------------------TFLuna------------------");
+
+   // Take sensor readings
+   tflI2C.getData(tfDist, tfAddr);
+   sensors_event_t a, g, temp;
+   mpu.getEvent(&a, &g, &temp);
+
+  // Check for significant distance changes during sweep
+  if (lastValidDistance > 0) {
+    int distanceDiff = abs(tfDist - lastValidDistance);
+    
+    if (distanceDiff > MIN_PASSABLE_GAP) {
+      // Calculate retracement angle between previous and current angle
+      int previousAngle = currentAngle - ANGLE_STEP;
+      float s = distanceDiff;
+      float next_angle = s / tfDist;
+      float deg_angle = next_angle * (180.0 / PI);
+      int newAngle = previousAngle + (int)deg_angle;
+      
+      // Only retrace if angle difference is significant
+      if (abs(newAngle - previousAngle) >= MIN_ANGLE_CHANGE) {
+        // Store current position
+        int returnAngle = currentAngle;
+        
+        // Move to calculated angle
+        sweepServo.write(newAngle);
+        delay(50);  // Allow servo to settle
+
+        // Take new reading at calculated angle
+        tflI2C.getData(tfDist, tfAddr);
+        mpu.getEvent(&a, &g, &temp);
+        
+        // Store retracement data point if we have space
+        if (dataIndex < ARRAY_SIZE) {
+          packet.data.range[dataIndex] = tfDist;
+          packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,newAngle);
+
+          dataIndex++;
+        }
+        // Return to original sweep position
+        currentAngle = returnAngle;
+        sweepServo.write(returnAngle);
+        delay(100);
+    }
+  }
+} 
+      // Move servo to next angle regular sweep
+      if (dataIndex < ARRAY_SIZE) {
+          packet.data.range[dataIndex] = tfDist;
+          packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,currentAngle);
+          lastValidDistance = tfDist;
+          dataIndex++;
+        }
+        currentAngle += ANGLE_STEP;
+        sweepServo.write(currentAngle);
+        
+      // Check if sweep complete or array full
+     if (currentAngle >= MAX_ANGLE && sweepInProgress) {
+      while (dataIndex < ARRAY_SIZE) {
+        packet.data.range[dataIndex] = INVALID_DISTANCE;
+        packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,currentAngle);
+        dataIndex++;
+        lastValidDistance = tfDist;
+      }
+        packet.data.personDetectedFlag = personDetected;
+        packet.data.timestamp = millis();
+  
+  int state = radio.transmit(packet.buffer, sizeof(packet.buffer)); // Transmit the packet
+
+  if (state == RADIOLIB_ERR_NONE) {
+    // the packet was successfully transmitted
+    Serial.println(F("Transmission successful!"));
+    
+    // Print some info about what we sent (for debugging)
+    Serial.print("Device ID: ");
+    Serial.println(packet.data.device_id);
+    Serial.println("\nDistances [cm]:");
+    for (int i = 0; i < 45; i += 1) { // Print every 5th value
+      Serial.print(packet.data.range[i]); Serial.print(" ");
+    }
+    
+    Serial.println("\nAngles [deg]:");
+    for (int i = 0; i < 45; i+= 1) {
+      Serial.print(packet.data.angle[i]); Serial.print(" ");
+    }
+    Serial.print("\nTemperature: ");
+    Serial.print(packet.data.temperature);
+    Serial.println(" °C");
+    Serial.print("\nTimestamp: ");
+    Serial.println(packet.data.timestamp);
+
+
+
+  } else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
+    // the supplied packet was longer than 256 bytes
+    Serial.println(F("too long!"));
+
+  } else if (state == RADIOLIB_ERR_TX_TIMEOUT) {
+    // timeout occured while transmitting packet
+    Serial.println(F("timeout!"));
+
+  } else {
+    // some other error occurred
+    Serial.print(F("failed, code "));
+    Serial.println(state);
+
+  }
+
+  while (millis() - currentTime < 500) {}
+  currentTime = millis(); // Update current time
+
+  sweepServo.write(0);
+  personDetected = false;
+  sweepInProgress = false;
+  currentAngle = 0;
+  dataIndex = 0;
+  lastValidDistance = 0;
+
+  memset(&packet.data, 0, sizeof(packet.data));
+  packet.data.device_id = 1; // Restore device ID
+  
+}
+}
+
+
+void initializeSensors() {
+  //Turn Vext on to power Sensors
+  pinMode(Vext,OUTPUT);
+  digitalWrite(Vext, LOW);
+
+  Wire.begin(SDA, SCL);           // Initalize Wire library
+
+  // Initialize servo
+  sweepServo.attach(SERVO_PIN);
+  sweepServo.write(0);  // Start at 0 degrees
+  currentAngle = 0;
+
+  if (!bmp.begin(0x76)) {
+      Serial.println("Could not find a valid BMP280 sensor, check wiring!");
+      while (1);
+  }
+
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
+      Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
+      Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
+      Adafruit_BMP280::FILTER_X16,      /* Filtering. */
+      Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+
+  if (!mpu.begin()) {
+      Serial.println("Failed to find MPU6050 chip");
+      while (1);
+  }
+
+}
+
+void initializeRadio(){
+
+  Serial.print(F("[SX1262] Initializing ... "));
+  int state = radio.begin();
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.println(F("success!"));
+  } else {
+    Serial.print(F("failed, code "));
+    Serial.println(state);
+    while (true) { delay(10); }
+  }
+
+}
+
+void initializeEspNow(){
+   // Initialize ESP-NOW
+   WiFi.mode(WIFI_STA);
+   if (esp_now_init() != ESP_OK) {
+       Serial.println("ESP-NOW init failed");
+       return;
+   }
+   esp_now_register_recv_cb(OnDataRecv);
+
+}
+
+ // Function to handle incoming data from ESP-NOW
+ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&cameraData, incomingData, sizeof(cameraData));
   personDetected = cameraData.detected;
   
@@ -92,192 +294,22 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   Serial.println(personDetected ? "DETECTED" : "NOT DETECTED");
 }
 
-void setup(){
-    
-    //Turn Vext on to power Sensors
-    pinMode(Vext,OUTPUT);
-    digitalWrite(Vext, LOW);
-
-    Serial.begin(115200);  // Initalize serial port
-    Wire.begin(SDA, SCL);           // Initalize Wire library
-
-    // Initialize servo
-    sweepServo.attach(SERVO_PIN);
-    sweepServo.write(0);  // Start at 0 degrees
-    currentAngle = 0;
-
-    if (!bmp.begin(0x76)) {
-        Serial.println("Could not find a valid BMP280 sensor, check wiring!");
-        while (1);
-    }
-
-    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-        Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-        Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-        Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-        Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
-
-    if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip");
-        while (1);
-    }
-    
-     // Initialize LoRa
-    Serial.print(F("[SX1262] Initializing ... "));
-    int state = radio.begin();
-    if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("success!"));
-    } else {
-      Serial.print(F("failed, code "));
-      Serial.println(state);
-      while (true) { delay(10); }
-    }
-
-    // Initialize ESP-NOW
-    WiFi.mode(WIFI_STA);
-    if (esp_now_init() != ESP_OK) {
-        Serial.println("ESP-NOW init failed");
-        return;
-    }
-    esp_now_register_recv_cb(OnDataRecv);
-
-    Serial.println("System ready - waiting for data...");
-
-}
-
-void loop() {
+// Function to calculate the relative angle based on gyro data and servo angle
+float calculateRelativeAngle(float gyroZ, int servoAngle) {
+  static float integratedGyroAngle = 0;
+  static unsigned long lastTime = 0;
   
-  personDetected = false;
+  unsigned long currentTime = millis();
+  float deltaTime = (currentTime - lastTime) / 1000.0;
+  lastTime = currentTime;
   
-  if (currentAngle == 0) {
-    sweepInProgress = true;
-    dataIndex = 0;
-    data.temperature = bmp.readTemperature();
-    lastValidDistance = 0;
-  }
-
-  // Take sensor readings
-  tflI2C.getData(tfDist, tfAddr);
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-
-  // Check for significant distance changes during sweep
-  if (lastValidDistance > 0) {
-    int distanceDiff = abs(tfDist - lastValidDistance);
-    
-    if (distanceDiff > MIN_PASSABLE_GAP) {
-        // Calculate retracement angle between previous and current angle
-        int previousAngle = currentAngle - ANGLE_STEP;
-        float s = distanceDiff;
-        float next_angle = s / tfDist;
-        float deg_angle = next_angle * (180.0 / PI);
-        int newAngle = previousAngle + (int)deg_angle;
-        
-        // Only retrace if angle difference is significant
-        if (abs(newAngle - previousAngle) >= MIN_ANGLE_CHANGE) {
-            // Store current position
-            int returnAngle = currentAngle;
-            
-            // Move to calculated angle
-            sweepServo.write(newAngle);
-            delay(100);  // Allow servo to settle
-            
-            // Take new reading at calculated angle
-            tflI2C.getData(tfDist, tfAddr);
-            mpu.getEvent(&a, &g, &temp);
-            
-            // Store retracement data point
-            if (dataIndex < ARRAY_SIZE) {
-                data.distances[dataIndex] = tfDist;
-                data.angles[dataIndex] = newAngle;
-                data.altitudes[dataIndex] = bmp.readAltitude(ALTITUDE);
-                data.accelX[dataIndex] = a.acceleration.x;
-                data.accelY[dataIndex] = a.acceleration.y;
-                data.accelZ[dataIndex] = a.acceleration.z;
-                data.gyroX[dataIndex] = g.gyro.x;
-                data.gyroY[dataIndex] = g.gyro.y;
-                data.gyroZ[dataIndex] = g.gyro.z;
-                data.isPassable[dataIndex] = (distanceDiff < MIN_PASSABLE_GAP);
-                dataIndex++;
-              }
-                
-              // Return to original sweep position
-              currentAngle = returnAngle;
-              sweepServo.write(returnAngle);
-              delay(100);
-          }
-      }
+  if (deltaTime < 1.0) {
+      integratedGyroAngle += gyroZ * RAD_TO_DEG * deltaTime;
   }
   
-  // Store regular sweep reading
-  if (dataIndex < ARRAY_SIZE) {
-      data.distances[dataIndex] = tfDist;
-      data.angles[dataIndex] = currentAngle;
-      data.altitudes[dataIndex] = bmp.readAltitude(ALTITUDE);
-      data.accelX[dataIndex] = a.acceleration.x;
-      data.accelY[dataIndex] = a.acceleration.y;
-      data.accelZ[dataIndex] = a.acceleration.z;
-      data.gyroX[dataIndex] = g.gyro.x;
-      data.gyroY[dataIndex] = g.gyro.y;
-      data.gyroZ[dataIndex] = g.gyro.z;
-      data.isPassable[dataIndex] = true;
-      dataIndex++;
-      lastValidDistance = tfDist;
-  }
-    // Continue normal sweep
-    currentAngle += ANGLE_STEP;
-    sweepServo.write(currentAngle);
-
-    // Check if sweep complete or array full
-    if (currentAngle >= MAX_ANGLE && sweepInProgress) {
-        // Fill remaining array positions with invalid values if any
-        while (dataIndex < ARRAY_SIZE) {
-            data.distances[dataIndex] = INVALID_DISTANCE;
-            data.angles[dataIndex] = currentAngle;
-            data.isPassable[dataIndex] = false;
-            dataIndex++;
-        }
-
-        data.dataCount = dataIndex;
-        data.humanDetected = personDetected;
-        data.timestamp = millis();
-
-        // Transmit complete sweep data
-        int state = radio.transmit((uint8_t*)&data, sizeof(data));
-        
-        
-      if (state == RADIOLIB_ERR_NONE) {
-          Serial.println(F("Sweep data transmitted successfully"));
-          Serial.printf("Points collected: %d\n", data.dataCount);
-
-      // print measured data rate
-      Serial.print(F("[SX1262] Datarate:\t"));
-      Serial.print(radio.getDataRate());
-      Serial.println(F(" bps"));
+  float relativeAngle = servoAngle - integratedGyroAngle;
+  while(relativeAngle > 180) relativeAngle -= 360;
+  while(relativeAngle < -180) relativeAngle += 360;
   
-  } else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
-      // the supplied packet was longer than 256 bytes
-      Serial.println(F("too long!"));
-  
-  } else if (state == RADIOLIB_ERR_TX_TIMEOUT) {
-      // timeout occurred while transmitting packet
-      Serial.println(F("timeout!"));
-  
-  } else {
-      // some other error occurred
-      Serial.print(F("failed, code "));
-      Serial.println(state);
-  }
-  
-  // Reset for next sweep
-  currentAngle = 0;
-  sweepServo.write(0);
-  sweepInProgress = false;
-  dataIndex = 0;
-  lastValidDistance = 0;
-
-      
-  delay(100);
-  }
-
+  return relativeAngle;
 }
