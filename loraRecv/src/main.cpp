@@ -92,7 +92,6 @@ void loop(){
     // reset flag
     receivedFlag = false;
 
-    // you can read received data as an Arduino String
     rx_packet packet;
     int state = radio.readData(packet.buffer, sizeof(packet.buffer));
 
@@ -104,26 +103,25 @@ void loop(){
       // Serial.print(F("[SX1262] Data:\t\t"));
       // Serial.println(str);
 
-      Serial.print("Received from device: ");
-      Serial.println(packet.data.device_id);
+      JsonDocument doc;
+      JsonArray range = doc.createNestedArray("ranges");
+      JsonArray angle = doc.createNestedArray("angles");
 
-
-      
-      // Print sample data
-      for(int i = 0; i < 45; i += 5) {
-        Serial.print(packet.data.range[i]); Serial.print("cm @ ");
-        Serial.print(packet.data.angle[i]); Serial.println("°");
+      for (int i = 0; i < 45; i++) {
+        range.add(packet.data.range[i]);
+        angle.add(packet.data.angle[i]);
       }
 
-      Serial.print("Temperature: ");
-      Serial.print(packet.data.temperature);
-      Serial.println(" °C");
-      Serial.print("Timestamp: ");
-      Serial.println(packet.data.timestamp);
-      Serial.print("Person detected: ");
-      Serial.println(packet.data.personDetectedFlag ? "Yes" : "No");
-      Serial.println("------------------End of packet------------------");
-     }
+      doc["device_id"] = packet.data.device_id;
+      doc["temperature"] = packet.data.temperature;
+      doc["timestamp"] = packet.data.timestamp;
+      doc["personDetectedFlag"] = packet.data.personDetectedFlag;
+
+
+      serializeJson(doc, Serial);
+      Serial.println();
+
+    }
 
      else 
      {
@@ -134,4 +132,3 @@ void loop(){
     }
   }
 }
-j

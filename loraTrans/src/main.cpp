@@ -131,7 +131,6 @@ void loop(){
         
         // Move to calculated angle
         sweepServo.write(newAngle);
-        delay(50);  // Allow servo to settle
 
         // Take new reading at calculated angle
         tflI2C.getData(tfDist, tfAddr);
