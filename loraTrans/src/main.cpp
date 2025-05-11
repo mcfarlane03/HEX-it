@@ -128,22 +128,24 @@ void loop(){
       if (abs(newAngle - previousAngle) >= MIN_ANGLE_CHANGE) {
         // Store current position
         int returnAngle = currentAngle;
-        
-        // Move to calculated angle
-        sweepServo.write(newAngle);
-        delay(50);  // Allow servo to settle
 
-        // Take new reading at calculated angle
-        tflI2C.getData(tfDist, tfAddr);
-        mpu.getEvent(&a, &g, &temp);
-        
-        // Store retracement data point if we have space
-        if (dataIndex < ARRAY_SIZE) {
-          packet.data.range[dataIndex] = tfDist;
-          packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,newAngle);
+        for (int count = 0; count < 2; count++) {
+          // Move to calculated angle
+          sweepServo.write(newAngle);
+          delay(50);  // Allow servo to settle
 
-          dataIndex++;
-        }
+          // Take new reading at calculated angle
+          tflI2C.getData(tfDist, tfAddr);
+          mpu.getEvent(&a, &g, &temp);
+          
+          // Store retracement data point if we have space
+          if (dataIndex < ARRAY_SIZE) {
+            packet.data.range[dataIndex] = tfDist;
+            packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,newAngle);
+
+            dataIndex++;
+          }
+      }
         // Return to original sweep position
         currentAngle = returnAngle;
         sweepServo.write(returnAngle);
