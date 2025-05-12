@@ -25,7 +25,7 @@
 #define SERVO_PIN 45 
 
  // Scanning parameters
- #define ANGLE_STEP 5
+ #define ANGLE_STEP 4    // Servo angle step (degrees)
  #define ARRAY_SIZE 45  
  #define MAX_ANGLE 180   // Maximum servo angle
  #define INVALID_DISTANCE 900  // Invalid distance value
@@ -95,13 +95,14 @@ void setup(){
 
 void loop(){
   //personDetected = false;
-  
+  static float integratedGyroAngle = 0;
+
   if (currentAngle == 0) {
     sweepInProgress = true;
     dataIndex = 0;
     packet.data.temperature = bmp.readTemperature();
     lastValidDistance = 0;
-    
+    integratedGyroAngle = 0;
   }
 
 
@@ -127,22 +128,25 @@ void loop(){
       // Only retrace if angle difference is significant
       if (abs(newAngle - previousAngle) >= MIN_ANGLE_CHANGE) {
         // Store current position
-        int returnAngle = currentAngle;
-        
-        // Move to calculated angle
-        sweepServo.write(newAngle);
+        int returnAngle = currentAngle + ANGLE_STEP;
 
-        // Take new reading at calculated angle
-        tflI2C.getData(tfDist, tfAddr);
-        mpu.getEvent(&a, &g, &temp);
-        
-        // Store retracement data point if we have space
-        if (dataIndex < ARRAY_SIZE) {
-          packet.data.range[dataIndex] = tfDist;
-          packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,newAngle);
+        for (int count = 0; count < 2; count++) {
+          // Move to calculated angle
+          sweepServo.write(newAngle);
+          delay(50);  // Allow servo to settle
 
-          dataIndex++;
-        }
+          // Take new reading at calculated angle
+          tflI2C.getData(tfDist, tfAddr);
+          mpu.getEvent(&a, &g, &temp);
+          
+          // Store retracement data point if we have space
+          if (dataIndex < ARRAY_SIZE) {
+            packet.data.range[dataIndex] = tfDist;
+            packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,newAngle);
+
+            dataIndex++;
+          }
+      }
         // Return to original sweep position
         currentAngle = returnAngle;
         sweepServo.write(returnAngle);
@@ -164,6 +168,7 @@ void loop(){
      if (currentAngle >= MAX_ANGLE && sweepInProgress) {
       while (dataIndex < ARRAY_SIZE) {
         packet.data.range[dataIndex] = INVALID_DISTANCE;
+       //packet.data.angle[dataIndex] =currentAngle;
         packet.data.angle[dataIndex] = calculateRelativeAngle(g.gyro.z,currentAngle);
         dataIndex++;
         lastValidDistance = tfDist;
