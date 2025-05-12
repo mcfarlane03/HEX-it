@@ -1,9 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
-#include <TFLI2C.h>      // TFLuna-I2C Library v.0.1.1
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BMP280.h>
-#include <Adafruit_MPU6050.h>
 #include <ArduinoJson.h>
 
 #include <RadioLib.h>
@@ -42,6 +38,18 @@ struct sensor_data {
   bool personDetectedFlag; // Person detected flag
 } typedef sensor_data; // Define the data structure 
 
+struct imu_data {
+  int8_t device_id;      // e.g. 2 for IMU
+  float gyro_z;          // Gyroscope Z axis
+  float accel_x;         // Acceleration X axis
+  float accel_y;         // Acceleration Y axis
+} typedef imu_data;
+
+union imu_packet {
+  uint8_t buffer[sizeof(imu_data)];
+  imu_data data;
+};
+
 union tx_packet{
   uint8_t buffer[sizeof(sensor_data)]; // Buffer to hold the data
   sensor_data data; // Data to be transmitted
@@ -56,7 +64,7 @@ struct_message cameraData;
 
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 tx_packet packet; // Create packet instance
-
+imu_packet imuPacket;
 
 TFLI2C tflI2C;
 Adafruit_BMP280 bmp; // I2C
@@ -216,6 +224,27 @@ void loop(){
     Serial.println(state);
 
   }
+
+      // ----------- SEND IMU PACKET -----------
+      imuPacket.data.device_id = 2;
+      imuPacket.data.gyro_z = g.gyro.z;
+      imuPacket.data.accel_x = a.acceleration.x;
+      imuPacket.data.accel_y = a.acceleration.y;
+  
+      int imuState = radio.transmit(imuPacket.buffer, sizeof(imuPacket.buffer));
+      if (imuState == RADIOLIB_ERR_NONE) {
+        Serial.println("IMU packet sent!");
+        Serial.println("IMU packet data:");
+        Serial.print("Device ID: "); Serial.println(imuPacket.data.device_id);
+        Serial.print("Gyro Z: "); Serial.println(imuPacket.data.gyro_z, 6);
+        Serial.print("Accel X: "); Serial.println(imuPacket.data.accel_x, 6);
+        Serial.print("Accel Y: "); Serial.println(imuPacket.data.accel_y, 6);
+
+      } else {
+        Serial.print("IMU packet failed, code ");
+        Serial.println(imuState);
+      }
+      // ---------------------------------------  
 
   while (millis() - currentTime < 500) {}
   currentTime = millis(); // Update current time

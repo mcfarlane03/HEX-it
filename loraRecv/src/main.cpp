@@ -3,10 +3,6 @@
 #include <ArduinoJson.h>
 #include <RadioLib.h>
 
-
-
-
-
 #define Vext 36
 #define SDA 33
 #define SCL 34
@@ -14,6 +10,7 @@
 #define DIO_0    26
 #define DIO_1    14
 #define NSS      8
+
 #define RESET    12
 #define BUSY     13
 
@@ -27,13 +24,27 @@ struct sensor_data {
   bool personDetectedFlag;
 };
 
-union rx_packet {
+struct imu_data {
+  int8_t device_id;
+  float gyro_z;
+  float accel_x;
+  float accel_y;
+};
+
+union sensor_packet {
   uint8_t buffer[sizeof(sensor_data)];
   sensor_data data;
 };
 
+union imu_packet {
+  uint8_t buffer[sizeof(imu_data)];
+  imu_data data;
+};
+
 SX1262 radio = new Module(NSS, DIO_1, RESET, BUSY); // Create radio instance
 
+sensor_packet packet1;
+imu_packet packet2;
 
 int count = 0;
 
@@ -86,49 +97,57 @@ void setup(){
   }
 }
 
-void loop(){
-
-  if(receivedFlag) {
-    // reset flag
+void loop() {
+  if (receivedFlag) {
+    // Reset flag
     receivedFlag = false;
 
-    rx_packet packet;
-    int state = radio.readData(packet.buffer, sizeof(packet.buffer));
+    // Read the first packet
+    int state1 = radio.readData(packet1.buffer, sizeof(packet1.buffer));
 
-    if (state == RADIOLIB_ERR_NONE) {
-      // // packet was successfully received
-      // Serial.println(F("[SX1262] Received packet!"));
-
-      // // print data of the packet
-      // Serial.print(F("[SX1262] Data:\t\t"));
-      // Serial.println(str);
-
-      JsonDocument doc;
-      JsonArray range = doc.createNestedArray("ranges");
-      JsonArray angle = doc.createNestedArray("angles");
-
-      for (int i = 0; i < 45; i++) {
-        range.add(packet.data.range[i]);
-        angle.add(packet.data.angle[i]);
+    if (state1 == RADIOLIB_ERR_NONE && packet1.data.device_id == 1) {
+      // Wait for the second packet
+      while (!receivedFlag) {
+        delay(10);
       }
 
-      doc["device_id"] = packet.data.device_id;
-      doc["temperature"] = packet.data.temperature;
-      doc["timestamp"] = packet.data.timestamp;
-      doc["personDetectedFlag"] = packet.data.personDetectedFlag;
+      // Reset flag
+      receivedFlag = false;
 
+      // Read the second packet
+      int state2 = radio.readData(packet2.buffer, sizeof(packet2.buffer));
 
-      serializeJson(doc, Serial);
-      Serial.println();
+      if (state2 == RADIOLIB_ERR_NONE && packet2.data.device_id == 2) {
+        // Combine data into a JSON object
+        StaticJsonDocument<1024> doc;
+        JsonArray range = doc.createNestedArray("ranges");
+        JsonArray angle = doc.createNestedArray("angles");
 
-    }
+        for (int i = 0; i < 45; i++) {
+          range.add(packet1.data.range[i]);
+          angle.add(packet1.data.angle[i]);
+        }
 
-     else 
-     {
-        // some other error occurred
-        Serial.print(F("failed, code "));
-        Serial.println(state);
-  
+        doc["device_id_1"] = packet1.data.device_id;
+        doc["temperature"] = packet1.data.temperature;
+        doc["timestamp"] = packet1.data.timestamp;
+        doc["personDetectedFlag"] = packet1.data.personDetectedFlag;
+
+        doc["device_id_2"] = packet2.data.device_id;
+        doc["rotation_z"] = packet2.data.gyro_z;
+        doc["accel_x"] = packet2.data.accel_x;
+        doc["accel_y"] = packet2.data.accel_y;
+
+        // Serialize JSON and send over serial
+        serializeJson(doc, Serial);
+        Serial.println();
+      } else {
+        // Drop both packets if the second packet is invalid or not ID2
+        Serial.println("Second packet invalid or not ID2. Dropping both packets.");
+      }
+    } else {
+      // Drop the first packet if it is not ID1
+      Serial.println("First packet invalid or not ID1. Dropping packet.");
     }
   }
 }

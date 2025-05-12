@@ -4,11 +4,12 @@ classdef LidarSLAMSystem < handle
         serialPort
         
         % SLAM Components
-        maxRange = 20;          % meters
+        maxRange = 8;          % meters
         minRange = 0.1;         % meters
         slamAlgo
         optimizedPoses
         map
+        scans
         
         % Visualization
         fig
@@ -99,11 +100,11 @@ classdef LidarSLAMSystem < handle
                     
                     if isAccepted
                         % Update map using poseGraph (new property name)
-                        [scans, obj.optimizedPoses] = scansAndPoses(obj.slamAlgo);
+                        [obj.scans, obj.optimizedPoses] = scansAndPoses(obj.slamAlgo);
                         
                         % Only update recent scans for performance
-                        for i = max(1, length(scans)-3):length(scans)
-                            insertRay(obj.map, obj.optimizedPoses(i,:), scans{i}, obj.maxRange);
+                        for i = max(1, length(obj.scans)-3):length(obj.scans)
+                            insertRay(obj.map, obj.optimizedPoses(i,:), obj.scans{i}, obj.maxRange);
                         end
                         
                         % Visualize
@@ -137,8 +138,8 @@ classdef LidarSLAMSystem < handle
                 'Loop Closures: %d\n' ...
                 'Map Size: %.1f x %.1f m\n' ...
                 'Trajectory: %.1f m'], ...
-                length(scans), ...
-                obj.slamAlgo.LoopClosureCount, ...
+                length(obj.scans), ...
+                0,...
                 obj.map.XWorldLimits(2), ...
                 obj.map.YWorldLimits(2), ...
                 sum(sqrt(sum(diff(obj.optimizedPoses).^2, 2))));
@@ -152,7 +153,7 @@ classdef LidarSLAMSystem < handle
             results = struct(...
                 'map', obj.map, ...
                 'poses', obj.optimizedPoses, ...
-                'scans', {scans}, ...  % Cell array of scans
+                'scans', {obj.scans}, ...  % Cell array of scans
                 'poseGraph', poseGraph);
             
             save('slam_results.mat', 'results');
@@ -162,7 +163,7 @@ classdef LidarSLAMSystem < handle
             show(obj.map);
             hold on;
             plot(obj.optimizedPoses(:,1), obj.optimizedPoses(:,2), 'r-', 'LineWidth', 2);
-            saveas(gcf, 'slam_map.png');
+            saveas(gcf, 'slam_map.pgm');
         end
     end
 end
