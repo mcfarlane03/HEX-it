@@ -88,9 +88,12 @@ void setup(){
   // start listening for LoRa packets
   Serial.print(F("[SX1262] Starting to listen ... "));
   state = radio.startReceive();
+  
   if (state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
-  } else {
+  } 
+  
+  else {
     Serial.print(F("failed, code "));
     Serial.println(state);
     while (true) { delay(10); }
@@ -119,7 +122,7 @@ void loop() {
 
       if (state2 == RADIOLIB_ERR_NONE && packet2.data.device_id == 2) {
         // Combine data into a JSON object
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
         JsonArray range = doc.createNestedArray("ranges");
         JsonArray angle = doc.createNestedArray("angles");
 
@@ -141,11 +144,15 @@ void loop() {
         // Serialize JSON and send over serial
         serializeJson(doc, Serial);
         Serial.println();
-      } else {
+      } 
+      
+      else {
         // Drop both packets if the second packet is invalid or not ID2
         Serial.println("Second packet invalid or not ID2. Dropping both packets.");
       }
-    } else {
+    } 
+    
+    else {
       // Drop the first packet if it is not ID1
       Serial.println("First packet invalid or not ID1. Dropping packet.");
     }
