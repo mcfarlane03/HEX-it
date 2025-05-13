@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 # Add parent directory to path to import RoomMapper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.serialReader import RoomMapper
+from loraRecv.src.matlab_int import RoomMapper
 
 class TestRoomMapper(unittest.TestCase):
     @classmethod
