@@ -30,7 +30,9 @@ typedef struct struct_message {
   esp_now_peer_info_t peerInfo;
   
   bool lastStatus = false;
-  
+  unsigned long lastSentTime = 0;
+  const unsigned long DETECTED_SEND_INTERVAL = 1000; // ms
+
   // callback when data is sent
   void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("\r\nLast Packet Send Status:\t");
@@ -108,24 +110,24 @@ void loop() {
     }
 
     bool currentStatus = (bool)personDetection;
-    unsigned long timestamp = millis();
+    unsigned long now = millis();
 
-    // a person has been detected!
-    if (currentStatus && (currentStatus != lastStatus)) {
-        lastStatus = currentStatus;
-
-        myData.detected = true;
-
-        // Send message via ESP-NOW
-        esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-        
-        if (result == ESP_OK) {
-            Serial.print("Detection status sent: ");
-            Serial.println(currentStatus ? "PERSON DETECTED" : "NO PERSON");
+    if (currentStatus) {
+        // Send at interval or on rising edge
+        if ((now - lastSentTime > DETECTED_SEND_INTERVAL) || (currentStatus != lastStatus)) {
+            myData.detected = true;
+            esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+            lastSentTime = now;
+            Serial.println("Detection status sent: PERSON DETECTED");
         }
-        else {
-            Serial.println("Error sending the data");
-        }
+    } else if (currentStatus != lastStatus) {
+        // Person just disappeared, send "no person"
+        myData.detected = false;
+        esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+        Serial.println("Detection status sent: NO PERSON");
+        lastSentTime = now;
     }
+
+    lastStatus = currentStatus;
     delay(100);
 }
