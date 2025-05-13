@@ -19,6 +19,7 @@ classdef LidarSLAMSystem < handle
         imuVelocity = [0 0]
         imuAccel = [0 0]
         
+        
         % Event Markers
         temperatureEvents = []
         personEvents = []

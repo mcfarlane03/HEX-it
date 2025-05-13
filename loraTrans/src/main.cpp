@@ -1,11 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>        // Instantiate the Wire library
 #include <ArduinoJson.h>
-
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP280.h> // I2C
+#include <Adafruit_MPU6050.h> // I2C
+#include <TFLI2C.h>
 #include <RadioLib.h>
- #include <esp_now.h>
- #include <WiFi.h>
-  #include <ESP32Servo.h>
+#include <esp_now.h>
+#include <WiFi.h>
+#include <ESP32Servo.h>
 
 #define Vext 36
 #define SDA 33
@@ -246,7 +249,7 @@ void loop(){
       }
       // ---------------------------------------  
 
-  while (millis() - currentTime < 500) {}
+  while (millis() - currentTime < 100) {}
   currentTime = millis(); // Update current time
 
   sweepServo.write(0);
