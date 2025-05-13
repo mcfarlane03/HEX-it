@@ -1,36 +1,39 @@
 import os
 from flask import Flask, request
-from .config import Config
 from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_login import LoginManager, current_user
 import jwt
-from flask import request, g
+from .config import Config
 
+# Initialize Flask app
 app = Flask(__name__)
+app.config.from_object(Config)
 
-# Minimal CORS config allowing all origins, methods, and headers for testing
+# Enable CORS for all routes (minimal configuration for testing)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-app.config.from_object(Config)
+# Enable CSRF protection
 csrf = CSRFProtect(app)
 
+# Initialize SQLAlchemy and Flask-Migrate
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-app.config['UPLOAD_FOLDER'] = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads'))
 
+# Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# Configure secure cookies
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['REMEMBER_COOKIE_SECURE'] = False
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 
-app.config['SERVER_NAME'] = 'info3180-project-jamdate-9maa.onrender.com'
-
+# User loader for Flask-Login
 @login_manager.request_loader
 def load_user_from_request(request):
     auth_header = request.headers.get('Authorization')
@@ -48,14 +51,17 @@ def load_user_from_request(request):
             app.logger.error(f"Token authentication error: {e}")
     return None
 
+# Log OPTIONS requests for debugging
 @app.before_request
 def log_options_requests():
     if request.method == 'OPTIONS':
         app.logger.debug(f"Received OPTIONS request for {request.path}")
 
+# Set CSRF token cookie after each request
 @app.after_request
 def set_csrf_cookie(response):
     response.set_cookie('csrf_token', generate_csrf())
     return response
 
+# Import views and models to register routes and database models
 from app import views, models

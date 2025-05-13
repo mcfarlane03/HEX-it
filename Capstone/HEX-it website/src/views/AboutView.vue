@@ -1,20 +1,15 @@
 <template>
-  <div class="about container">
-    <h1>About Profile Matching App</h1>
-    <p>Welcome to the Profile Matching App, your go-to platform for connecting with like-minded individuals.</p>
-    <p>Our mission is to help you find meaningful connections based on shared interests, values, and preferences.</p>
-    <h2>Features</h2>
-    <ul>
-      <li>Create and manage your personal profiles.</li>
-      <li>Search and filter profiles based on various criteria.</li>
-      <li>Find matches tailored to your preferences.</li>
-      <li>Save your favorite profiles for easy access.</li>
-      <li>Secure and user-friendly interface.</li>
-    </ul>
-    <h2>Get Started</h2>
-    <p>Register an account or log in to start exploring profiles and making connections today!</p>
+  <div>
+    <h1>About Us</h1>
+    <p>This is the about page.</p>
   </div>
 </template>
+
+<script>
+export default {
+  name: 'AboutView',
+};
+</script>
 
 <style scoped>
 .about.container {
@@ -29,12 +24,12 @@
 }
 
 h1 {
-  color: #ff6f61;
+  color: #0080ff;
   margin-bottom: 20px;
 }
 
 h2 {
-  color: #ff3b2f;
+  color: #0080ff;
   margin-top: 30px;
   margin-bottom: 10px;
 }

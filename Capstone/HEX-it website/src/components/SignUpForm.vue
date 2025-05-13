@@ -1,23 +1,13 @@
 <template>
     <div class="signup-container">
-        <form id="signupForm" @submit.prevent="handleRegister" enctype="multipart/form-data">
+        <form id="signupForm" @submit.prevent="handleRegister">
             <h1>Register</h1>
             <div class="form-group">
-                <label for="username" class="form-label">Username:</label>
-                <input type="text" id="username" class="form-control" v-model="user.username" placeholder="Enter your username" required />
+                <label for="id" class="form-label">ID:</label>
+                <input type="number" id="id" class="form-control" v-model="user.id" placeholder="Enter your ID" required />
                 
                 <label for="password" class="form-label">Password:</label>
-                <input type="password" id="password" class="form-control" v-model="user.password" placeholder="Enter your password" required/>
-
-                <label for="name" class="form-label">Name:</label>
-                <input type="text" id="name" class="form-control" v-model="user.name" placeholder="Enter your full name" required />
-                
-                <label for="email" class="form-label">Email:</label>
-                <input type="text" id="email" class="form-control" v-model="user.email" placeholder="Enter your email" required />
-                
-                <label for="photo" class="form-label">Profile Photo:</label>
-                <input type="file" id="photo" class="form-control" @change="handlePhotoUpload"/>
-                <small class="form-text text-muted">Please upload a JPG or PNG image for your profile picture.</small>
+                <input type="password" id="password" class="form-control" v-model="user.password" placeholder="Enter your password" required />
             </div>
             <button type="submit">Register</button>
 
@@ -32,34 +22,31 @@
 </template>
 
 <script setup>
-    import { ref, onMounted } from 'vue';
-    import { useRouter } from 'vue-router';
-    
-    const router = useRouter();
-    
-    const csrf_token = ref("");
-    const user = ref({
-        username: "",
-        password: "",
-        name: "",
-        email: "",
-    });
-    
-    const photo = ref(null);
-    const message = ref("");
-    const errors = ref([]);
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 
-    // Fetch CSRF token when component is mounted
-    onMounted(() => {
-        getCsrfToken();
-    });
+const router = useRouter();
 
-    // Method to fetch CSRF token
-    function getCsrfToken() {
-        fetch("/api/v1/csrf-token")
+const csrf_token = ref("");
+const user = ref({
+    id: null, // ID field
+    password: "", // Password field
+});
+
+const message = ref("");
+const errors = ref([]);
+
+// Fetch CSRF token when component is mounted
+onMounted(() => {
+    getCsrfToken();
+});
+
+// Method to fetch CSRF token
+function getCsrfToken() {
+    fetch("/api/v1/csrf-token")
         .then(response => {
             if (!response.ok) {
-            throw new Error("Failed to get CSRF token");
+                throw new Error("Failed to get CSRF token");
             }
             return response.json();
         })
@@ -70,54 +57,34 @@
         .catch(err => {
             console.error("Error fetching CSRF token", err);
         });
-    }
-        
-    // Method to handle photo upload
-    function handlePhotoUpload(event) {
-        photo.value = event.target.files[0];
-    }
+}
 
-    function handleRegister() {
-        errors.value = [];
-        message.value = "";
-
-        const signupForm = document.getElementById('signupForm');
-        const form_data = new FormData(signupForm);
-
-        form_data.append("username", user.value.username);
-        form_data.append("password", user.value.password);
-        form_data.append("name", user.value.name);
-        form_data.append("email", user.value.email);
-        form_data.append("photo", photo.value);
-        form_data.append("csrf_token", csrf_token.value);
-
-        console.log("Form data being sent:", form_data);
-        
-        fetch("/api/register", {
-            method: "POST",
-            body: form_data,
+// Method to handle registration
+async function handleRegister() {
+    try {
+        const response = await fetch('/api/register', {
+            method: 'POST',
             headers: {
-                "X-CSRF-Token": csrf_token.value,
+                'Content-Type': 'application/json', // Specify JSON content type
+                'X-CSRF-Token': csrf_token.value,  // Include CSRF token if required
             },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.errors) {
-            errors.value = Object.values(data.errors).flat(); 
-            message.value = "";
-            } else {
-                message.value = data.message;
-                errors.value = [];
-                user.username = "";
-                user.password = "";
-                user.name = "";
-                user.email = "";
-                photo.value = null;
-                router.push({ name: 'login' });
-            }
-        })
-        .catch(error => console.log(error));
+            body: JSON.stringify(user.value), // Convert the user object to JSON
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'An error occurred');
+        }
+
+        const data = await response.json();
+        console.log('Registration successful:', data);
+        message.value = data.message;
+        router.push('/login'); // Redirect to login page after successful registration
+    } catch (error) {
+        console.error('Registration error:', error.message);
+        errors.value = [error.message];
     }
+}
 </script>
 
 <style scoped>
@@ -156,7 +123,7 @@ input {
 button {
     width: 100%;
     padding: 10px;
-    background-color: #ff789a;
+    background-color: #001f4d; /* Navy blue */
     color: white;
     border: none;
     border-radius: 4px;
@@ -164,7 +131,7 @@ button {
 }
 
 button:hover {
-    background-color: #ff3d6d;
+    background-color: #001a3c; /* Darker navy blue */
     transition: background-color 0.3s ease;
 }
 </style>

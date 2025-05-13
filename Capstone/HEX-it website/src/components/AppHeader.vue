@@ -2,7 +2,7 @@
   <header>
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
       <div class="container-fluid">
-        <RouterLink class="navbar-brand" to="/home">Jam-Date</RouterLink>
+        <RouterLink class="navbar-brand" to="/">HEX-it</RouterLink>
         <button
           class="navbar-toggler"
           type="button"
@@ -18,12 +18,6 @@
           <ul class="navbar-nav me-auto">
             <li class="nav-item">
               <RouterLink class="nav-link" to="/about">About</RouterLink>
-            </li>
-            <li class="nav-item" v-if="authStore.isAuthenticated">
-              <RouterLink class="nav-link" to="/profile">My Profiles</RouterLink>
-            </li>
-            <li class="nav-item" v-if="authStore.isAuthenticated">
-              <RouterLink class="nav-link" to="/create">Create Profile</RouterLink>
             </li>
           </ul>
             
@@ -66,7 +60,7 @@ function handleLogout() {
 }
 
 .navbar {
-  background-color: #ff4362;
+  background-color: #001f4d; /* Navy blue */
   padding: 10px;
 }
 
@@ -79,8 +73,8 @@ function handleLogout() {
 }
 
 .nav-link:hover {
-  background-color: #faf5f6;
-  color: #ff4362;
+  background-color: #ffffff; /* White */
+  color: #001f4d; /* Navy blue */
 }
 
 .navbar-brand {
@@ -90,15 +84,15 @@ function handleLogout() {
 }
 
 .btn {
-  color: #fff;
+  color: #ffffff;
   text-decoration: none;
   padding: 10px 15px;
   border-radius: 5px;
-  background-color: #ff4362;
+  background-color: #001f4d; /* Navy blue */
   transition: background-color 0.3s;
 }
 .btn:hover {
-  background-color: #faf5f6;
-  color: #ff4362;
+  background-color: #ffffff; /* White */
+  color: #001f4d; /* Navy blue */
 }
 </style>
