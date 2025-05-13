@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.serialReader import RoomMapper
+from loraRecv.src.matlab_int import RoomMapper
 
 def run_visualization_test():
     mapper = RoomMapper(serial_port=None, baud_rate=115200)
