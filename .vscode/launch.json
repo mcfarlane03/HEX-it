@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/macowner/Documents/HEX-it/loraTrans/src",
+      "program": "/Users/macowner/Documents/HEX-it/loraTrans/src/build/Debug/outDebug"
+    }
+  ]
+}
