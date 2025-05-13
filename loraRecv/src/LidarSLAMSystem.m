@@ -19,6 +19,10 @@ classdef LidarSLAMSystem < handle
         imuVelocity = [0 0]
         imuAccel = [0 0]
         
+        % Event Markers
+        temperatureEvents = []
+        personEvents = []
+        
         % Visualization
         fig
         scanAxes
@@ -40,7 +44,7 @@ classdef LidarSLAMSystem < handle
             obj.slamAlgo.LoopClosureSearchRadius = 8;
             
             % Initialize larger map centered at origin
-            obj.map = occupancyMap(40, 40, 20);
+            obj.map = occupancyMap(20, 20, 20);
             obj.map.LocalOriginInWorld = [-20 -20]; % Center the map
             
             % Setup visualization
@@ -66,7 +70,7 @@ classdef LidarSLAMSystem < handle
             % Map plot
             obj.mapAxes = subplot(1,2,2);
             title('Occupancy Map');
-            axis equal;  % Add this to ensure proportional scaling
+            axis equal;
         end
         
         function run(obj)
@@ -92,8 +96,38 @@ classdef LidarSLAMSystem < handle
                     obj.processImuData(data.imu);
                 end
                 
+                % Process temperature data if available
+                if isfield(data, 'temperature')
+                    obj.processTemperature(data.temperature);
+                end
+                
+                % Process person detection if available
+                if isfield(data, 'personDetectedFlag')  % Note: Fixed typo from original
+                    obj.processPersonDetection(data.personDetectedFlag);
+                end
+                
             catch ME
                 disp(['Error: ' ME.message]);
+            end
+        end
+        
+        function processTemperature(obj, temp)
+            % Record high temperature events
+            if temp > 34
+                if ~isempty(obj.optimizedPoses)
+                    currentPose = obj.optimizedPoses(end,:);
+                    obj.temperatureEvents = [obj.temperatureEvents; currentPose];
+                    disp(['High temperature detected: ' num2str(temp) '°C']);
+                end
+            end
+        end
+        
+        function processPersonDetection(obj, detected)
+            % Record person detection events
+            if detected && ~isempty(obj.optimizedPoses)
+                currentPose = obj.optimizedPoses(end,:);
+                obj.personEvents = [obj.personEvents; currentPose];
+                disp('Person detected!');
             end
         end
         
@@ -222,6 +256,34 @@ classdef LidarSLAMSystem < handle
                 currY = currentPose(2) * yScale + yOffset;
                 plot(obj.mapAxes, currX, currY, 'ro', 'MarkerSize', 6, 'MarkerFaceColor', 'r');
             end
+            
+            % Plot temperature events (blue stars)
+            if ~isempty(obj.temperatureEvents)
+                tempX = obj.temperatureEvents(:,1) * xScale + xOffset;
+                tempY = obj.temperatureEvents(:,2) * yScale + yOffset;
+                plot(obj.mapAxes, tempX, tempY, 'rx', 'MarkerSize', 8, 'LineWidth', 1.5);
+            end
+            
+            % Plot person detection events (green diamonds)
+            if ~isempty(obj.personEvents)
+                personX = obj.personEvents(:,1) * xScale + xOffset;
+                personY = obj.personEvents(:,2) * yScale + yOffset;
+                plot(obj.mapAxes, personX, personY, 'go', 'MarkerSize', 8, 'LineWidth', 1.5);
+            end
+            
+            % Add legend if we have any events
+            if ~isempty(obj.temperatureEvents) || ~isempty(obj.personEvents)
+                legendEntries = {};
+                if ~isempty(obj.temperatureEvents)
+                    legendEntries{end+1} = 'High Temp';
+                end
+                if ~isempty(obj.personEvents)
+                    legendEntries{end+1} = 'Person';
+                end
+                legend(obj.mapAxes, legendEntries, 'Location', 'northeast');
+            end
+            
+            hold(obj.mapAxes, 'off');
         end
         
         function saveResults(obj)
@@ -230,14 +292,35 @@ classdef LidarSLAMSystem < handle
                 'poses', obj.optimizedPoses, ...
                 'scans', {obj.scans}, ...
                 'poseGraph', obj.poseGraph, ...
-                'imuTrajectory', [obj.imuPosition, obj.imuYaw]);
+                'temperatureEvents', obj.temperatureEvents, ...
+                'personEvents', obj.personEvents);
             
             save('slam_results.mat', 'results');
             
             figure;
             show(obj.map);
             hold on;
-            plot(obj.optimizedPoses(:,1), obj.optimizedPoses(:,2), 'r-', 'LineWidth', 2);
+            
+            % Plot events on saved map
+            if ~isempty(obj.temperatureEvents)
+                plot(obj.temperatureEvents(:,1), obj.temperatureEvents(:,2), 'b*', 'MarkerSize', 8, 'LineWidth', 1.5);
+            end
+            if ~isempty(obj.personEvents)
+                plot(obj.personEvents(:,1), obj.personEvents(:,2), 'gd', 'MarkerSize', 8, 'LineWidth', 1.5);
+            end
+            
+            % Add legend if needed
+            if ~isempty(obj.temperatureEvents) || ~isempty(obj.personEvents)
+                legendEntries = {};
+                if ~isempty(obj.temperatureEvents)
+                    legendEntries{end+1} = 'High Temp';
+                end
+                if ~isempty(obj.personEvents)
+                    legendEntries{end+1} = 'Person';
+                end
+                legend(legendEntries);
+            end
+            
             saveas(gcf, 'slam_map.png');
         end
     end
