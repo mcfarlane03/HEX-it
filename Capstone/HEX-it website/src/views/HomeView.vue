@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 id="viz">Visualization</h1>
+    <h1 id="viz" border="1px solid black" style=" margin: 10px;">Visualization</h1>
 
     <div class="live-indicator ms-auto">
       <div class="dot"></div>
@@ -9,7 +9,7 @@
 
     <div
       id="blueprint-container"
-      style="position: relative; width: 600px; height: 600px; border: 1px solid black;"
+      style="position: relative; width: 600px; height: 710px; border: 1px solid black;"
     >
       <img
         id="blueprint-image"
@@ -26,13 +26,14 @@
       ></div>
     </div>
 
-    <div>
+    <div border="1px solid black" style=" margin: 10px;">
+      
       <h2>Legend</h2>
       <table id="fire-data-table" class="table table-striped">
         <thead>
           <tr>
             <th id="people">People - <span class="limegreen-line"></span></th>
-            <th id="devicepath">Location of Device - <span class="red-line"></span></th>
+            <!-- <th id="devicepath">Location of Device - <span class="red-line"></span></th> -->
             <th id="devicepath">Passable Space - <span class="white-line"></span></th>
             <th id="devicepath">Impassable Space - <span class="black-line"></span></th>
             <th id="devicepath">Computed Path - <span class="darkblue-line"></span></th>
@@ -54,7 +55,7 @@
 
 <script>
 // /* import io from 'socket.io-client'; // Import the socket.io client */
-import blueprintImage from '../assets/blueprint11.png';
+import blueprintImage from '../assets/blueprint111.png';
 
 export default {
   data() {
@@ -100,41 +101,41 @@ export default {
         this.socket = null;
       }
     }, */
-    updateFireData(newData) {
-      this.fireDataList = newData; // Assuming the backend sends an array of fire data objects
-    },
-    updatePersonLayer(locations) {
-      const personLayer = document.getElementById('person-layer');
-      personLayer.innerHTML = ''; // Clear previous locations
-      locations.forEach((location) => {
-        const person = document.createElement('div');
-        person.className = 'person-marker';
-        person.style.position = 'absolute';
-        person.style.left = `${location.x}px`; // Adjust units as needed
-        person.style.top = `${location.y}px`; // Adjust units as needed
-        person.style.width = '20px'; // Example size
-        person.style.height = '20px'; // Example size
-        person.style.backgroundColor = 'blue';
-        person.style.borderRadius = '50%';
-        personLayer.appendChild(person);
-      });
-    },
-    updateFlameLayer(flames) {
-      const flameLayer = document.getElementById('flame-layer');
-      flameLayer.innerHTML = ''; // Clear previous flames
-      flames.forEach((flame) => {
-        const flameElement = document.createElement('div');
-        flameElement.className = 'flame-marker';
-        flameElement.style.position = 'absolute';
-        flameElement.style.left = `${flame.x}px`; // Adjust units as needed
-        flameElement.style.top = `${flame.y}px`; // Adjust units as needed
-        flameElement.style.width = '15px'; // Example size
-        flameElement.style.height = '15px'; // Example size
-        flameElement.style.backgroundColor = 'orange';
-        flameElement.style.borderRadius = '50%';
-        flameLayer.appendChild(flameElement);
-      });
-    },
+    // updateFireData(newData) {
+    //   this.fireDataList = newData; // Assuming the backend sends an array of fire data objects
+    // },
+    // updatePersonLayer(locations) {
+    //   const personLayer = document.getElementById('person-layer');
+    //   personLayer.innerHTML = ''; // Clear previous locations
+    //   locations.forEach((location) => {
+    //     const person = document.createElement('div');
+    //     person.className = 'person-marker';
+    //     person.style.position = 'absolute';
+    //     person.style.left = `${location.x}px`; // Adjust units as needed
+    //     person.style.top = `${location.y}px`; // Adjust units as needed
+    //     person.style.width = '20px'; // Example size
+    //     person.style.height = '20px'; // Example size
+    //     person.style.backgroundColor = 'blue';
+    //     person.style.borderRadius = '50%';
+    //     personLayer.appendChild(person);
+    //   });
+    // },
+    // updateFlameLayer(flames) {
+    //   const flameLayer = document.getElementById('flame-layer');
+    //   flameLayer.innerHTML = ''; // Clear previous flames
+    //   flames.forEach((flame) => {
+    //     const flameElement = document.createElement('div');
+    //     flameElement.className = 'flame-marker';
+    //     flameElement.style.position = 'absolute';
+    //     flameElement.style.left = `${flame.x}px`; // Adjust units as needed
+    //     flameElement.style.top = `${flame.y}px`; // Adjust units as needed
+    //     flameElement.style.width = '15px'; // Example size
+    //     flameElement.style.height = '15px'; // Example size
+    //     flameElement.style.backgroundColor = 'orange';
+    //     flameElement.style.borderRadius = '50%';
+    //     flameLayer.appendChild(flameElement);
+    //   });
+    // },
   },
 };
 </script>
@@ -230,8 +231,9 @@ export default {
     /* width: 800px;  */
     /* height: 600px;  */
     /* border: 1px solid black;  */
-    margin: 10px auto; /* Center the container */
+    margin: 30px auto; /* Center the container */
     background-color: #f0f0f0; /* A light background */
+
 }
 
 .room {
