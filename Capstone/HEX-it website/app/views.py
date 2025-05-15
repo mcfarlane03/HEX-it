@@ -3,11 +3,11 @@ import sys
 
 # Manually add the path to loraRecv/src for importing matlab_int
 lora_recv_src_path = r"C:\Users\donta\OneDrive\Desktop\HEX-it_website\HEX-it\loraRecv\src"
+
 if lora_recv_src_path not in sys.path:
     sys.path.insert(0, lora_recv_src_path)
 
-from matlab_int import start_matlab_script, stop_matlab_script, start_matlab_script_async
-
+from matlab_int import start_matlab_script_async, stop_matlab_script
 
 from app import app, db, login_manager, csrf
 from flask import request, jsonify, send_from_directory, session, redirect, url_for
@@ -76,13 +76,6 @@ def login():
 
         # Generate a token
         token = generate_token(user_id)
-
-        # Start MATLAB asynchronously after successful login
-        # Temporarily comment out to isolate login issue
-        # try:
-        #     start_matlab_script_async()
-        # except Exception as e:
-        #     app.logger.error(f"Error starting MATLAB asynchronously: {e}")
 
         return jsonify({'message': 'Login successful', 'token': token}), 200
 
