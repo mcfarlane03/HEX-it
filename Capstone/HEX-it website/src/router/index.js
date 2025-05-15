@@ -7,13 +7,17 @@ import SignUpForm from '../components/SignUpForm.vue'; // Correctly import SignU
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: HomeView,
+    redirect: '/login',
   },
   {
     path: '/login',
     name: 'Login',
     component: LoginForm,
+  },
+  {
+    path: '/home',
+    name: 'Home',
+    component: HomeView,
   },
   {
     path: '/about',

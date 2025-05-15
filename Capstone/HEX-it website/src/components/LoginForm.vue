@@ -1,91 +1,95 @@
 <template>
-  <div class="login-form">
-    <h2>Login</h2>
-    <form @submit.prevent="handleLogin">
-      <div>
-        <label for="username">Username:</label>
-        <input
-          type="text"
-          id="username"
-          v-model="user.username"
-          placeholder="Enter your username"
-          required
-        />
-      </div>
-      <div>
-        <label for="password">Password:</label>
-        <input
-          type="password"
-          id="password"
-          v-model="user.password"
-          placeholder="Enter your password"
-          required
-        />
-      </div>
-      <button type="submit">Login</button>
+    <form id="loginForm" @submit.prevent="handleLogin">
+        <div class="login-container">
+            <h1>Login</h1>
+            <div class="form-group">
+                <label for="id">ID:</label>
+                <input
+                    type="number"
+                    id="id"
+                    class="form-control"
+                    v-model="user.id"
+                    placeholder="Enter your ID"
+                    required
+                />
+
+                <label for="password">Password:</label>
+                <input
+                    type="password"
+                    id="password"
+                    class="form-control"
+                    v-model="user.password"
+                    placeholder="Enter your password"
+                    required
+                />
+            </div>
+            <button type="submit">Login</button>
+            <div v-if="message" class="alert alert-success">{{ message }}</div>
+            <div v-if="errors.length" class="alert alert-danger">
+                <ul>
+                    <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
+                </ul>
+            </div>
+        </div>
     </form>
-    <p v-if="message">{{ message }}</p>
-    <ul v-if="errors.length">
-      <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
-    </ul>
-  </div>
 </template>
 
-<script>
+<script setup>
 import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "../stores/auth";
 
-export default {
-  name: "LoginForm",
-  setup() {
-    const user = ref({
-      username: "", // Username field
-      password: "", // Password field
-    });
+const authStore = useAuthStore();
+const router = useRouter();
 
-    const message = ref("");
-    const errors = ref([]);
+const user = ref({
+    id: null, // ID field
+    password: "", // Password field
+});
 
-    // Method to handle login
-    async function handleLogin() {
-      try {
+const message = ref("");
+const errors = ref([]);
+
+// Method to handle login
+async function handleLogin() {
+    try {
         // Log the payload being sent to the backend
         console.log("Payload being sent:", user.value);
 
-        const response = await fetch("http://localhost:5000/api/auth/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(user.value),
+        const response = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(user.value),
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Login failed");
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Login failed");
         }
 
         const data = await response.json();
-        console.log("Login successful:", data);
-        message.value = "Login successful!";
+        message.value = data.message || "Login successful!";
         errors.value = [];
-      } catch (error) {
+        user.value.id = null;
+        user.value.password = "";
+
+        // Store the authentication token and user data
+        authStore.login(data.user, data.token);
+        console.log("Stored token:", data.token);
+
+        // Redirect to the home page
+        setTimeout(() => {
+            router.push({ name: "Home" });
+        }, 500);
+    } catch (error) {
         console.error("Login error:", error.message);
-        message.value = "";
         errors.value = [error.message];
-      }
+        message.value = "";
     }
-
-    return {
-      user,
-      message,
-      errors,
-      handleLogin,
-    };
-  },
-};
+}
 </script>
-
-
 
 <style scoped>
 .login-container {

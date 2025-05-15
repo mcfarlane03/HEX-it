@@ -1,8 +1,8 @@
 <template>
       <footer class="mt-5">
-          <div class="container">
+          <!-- <div class="container"> -->
               <p>Copyright &copy {{ year }} Flask Inc.</p>
-          </div>
+          <!-- </div> -->
       </footer>
 </template>
 

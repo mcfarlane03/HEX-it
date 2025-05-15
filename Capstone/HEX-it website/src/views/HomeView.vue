@@ -27,12 +27,16 @@
     </div>
 
     <div>
-      <h2>Fire Data</h2>
+      <h2>Legend</h2>
       <table id="fire-data-table" class="table table-striped">
         <thead>
           <tr>
-            <th>Temperature (°C)</th>
-            <th>Location</th>
+            <th id="people">People - <span class="green-line"></span></th>
+            <th id="devicepath">Location of Device - <span class="red-line"></span></th>
+            <th id="devicepath">Passable Space - <span class="white-line"></span></th>
+            <th id="devicepath">Impassable Space - <span class="black-line"></span></th>
+            <th id="devicepath">Path to Individual - <span class="purple-line"></span></th>
+            
           </tr>
         </thead>
         <tbody id="fire-data-body">
@@ -142,9 +146,46 @@ export default {
   margin-bottom: 10px;
 }
 
+.green-line {
+            border: none;
+            height: 10px;
+            background-color: green;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+.red-line {
+            border: none;
+            height: 10px;
+            background-color: red;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+.white-line {
+            border: none;
+            height: 10px;
+            background-color: white;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+.black-line {
+            border: none;
+            height: 10px;
+            background-color: black;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+
+.purple-line {
+            border: none;
+            height: 10px;
+            background-color: purple;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+
 .dot {
-  height: 10px;
-  width: 10px;
+  height: 100px;
+  width: 100px;
   background-color: red;
   border-radius: 50%;
   display: inline-block;
@@ -188,8 +229,8 @@ export default {
 }
 
 .live-indicator .dot {
-    height: 12px;
-    width: 12px;
+    height: 15px;
+    width: 15px;
     background-color: #ff0000;
     border-radius: 50%;
     margin-right: 8px;
