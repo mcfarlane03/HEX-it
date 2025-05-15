@@ -1,7 +1,8 @@
 import os
 import sys
 
-# Manually add the path to loraRecv/src for importing matlab_int
+# Manually add the path to loraRecv/src for importing matlab_intt
+# This is necessary because the script is not in the same directory as the app
 lora_recv_src_path = r"C:\Users\donta\OneDrive\Desktop\HEX-it_website\HEX-it\loraRecv\src"
 
 if lora_recv_src_path not in sys.path:
