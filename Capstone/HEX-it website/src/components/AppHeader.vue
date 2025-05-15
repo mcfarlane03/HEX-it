@@ -2,7 +2,11 @@
   <header>
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
       <div class="container-fluid">
-        <RouterLink class="navbar-brand" to="/">HEX-it</RouterLink>
+        
+        <RouterLink class="navbar-brand" to="">
+          <!-- <img src="@/assets/image.png" alt="HEX-it Logo" style="height: 40px; margin-right: 10px;" /> -->
+          HEX-it
+        </RouterLink>
         <button
           class="navbar-toggler"
           type="button"
@@ -14,10 +18,16 @@
         >
           <span class="navbar-toggler-icon"></span>
         </button>
+      
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
           <ul class="navbar-nav me-auto">
             <li class="nav-item">
+            
+            <li v-if="authStore.isAuthenticated" class="nav-item">
+              <RouterLink class="nav-link" to="/home">Home</RouterLink>
               <RouterLink class="nav-link" to="/about">About</RouterLink>
+              <RouterLink class="nav-link" to="/matlab-control">MATLAB Control</RouterLink>
+            </li>
             </li>
           </ul>
             
@@ -30,9 +40,10 @@
               </li>
           </ul>
         </div>
-      </div>
-    </nav>
+      </div> 
+  </nav>
   </header>
+
 </template>
 
 <script setup>
@@ -49,8 +60,6 @@ function handleLogout() {
   authStore.logout();
   window.location.href = '/';
 }
-
-
 </script>
 
 <style>

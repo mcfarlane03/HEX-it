@@ -31,30 +31,30 @@
       <table id="fire-data-table" class="table table-striped">
         <thead>
           <tr>
-            <th id="people">People - <span class="green-line"></span></th>
+            <th id="people">People - <span class="limegreen-line"></span></th>
             <th id="devicepath">Location of Device - <span class="red-line"></span></th>
             <th id="devicepath">Passable Space - <span class="white-line"></span></th>
             <th id="devicepath">Impassable Space - <span class="black-line"></span></th>
-            <th id="devicepath">Path to Individual - <span class="purple-line"></span></th>
-            
+            <th id="devicepath">Computed Path - <span class="darkblue-line"></span></th>
+            <th id="devicepath">Starting Position - <span class="skyblue-line"></span></th>
+            <th id="devicepath">Goal - <span class="purple-line"></span></th>
+            <th id="devicepath">Fire - <span class="red-X"></span></th>
           </tr>
         </thead>
-        <tbody id="fire-data-body">
+        <!-- <tbody id="fire-data-body">
           <tr v-for="(fireData, index) in fireDataList" :key="index">
             <td>{{ fireData.temperature }}</td>
             <td>{{ fireData.location }}</td>
           </tr>
-        </tbody>
+        </tbody> -->
       </table>
     </div>
-
-    <p>Note: Simulated data is being displayed. Connect your hardware for real-time updates.</p>
   </div>
 </template>
 
 <script>
-/* import io from 'socket.io-client'; // Import the socket.io client */
-import blueprintImage from '../assets/blueprint1.png';
+// /* import io from 'socket.io-client'; // Import the socket.io client */
+import blueprintImage from '../assets/blueprint11.png';
 
 export default {
   data() {
@@ -146,10 +146,17 @@ export default {
   margin-bottom: 10px;
 }
 
-.green-line {
+.limegreen-line {
             border: none;
             height: 10px;
-            background-color: green;
+            background-color: limegreen;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+.darkblue-line {
+            border: none;
+            height: 10px;
+            background-color: darkblue;
             width: 100px; /* Adjust width as needed */
             display: inline-block;
         }
@@ -182,6 +189,21 @@ export default {
             width: 100px; /* Adjust width as needed */
             display: inline-block;
         }
+.skyblue-line {
+            border: none;
+            height: 10px;
+            background-color: skyblue;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+.red-X {
+            border: none;
+            height: 10px;
+            background-color: red;
+            width: 100px; /* Adjust width as needed */
+            display: inline-block;
+        }
+
 
 .dot {
   height: 100px;

@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     proxy: {
       '^/api': {
-        target: 'http://127.0.0.1:8080', // Updated to match Flask backend
+        target: 'http://localhost:8080', // Changed from 127.0.0.1 to localhost
         changeOrigin: true,
         secure: false,
       }

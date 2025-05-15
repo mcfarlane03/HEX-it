@@ -2,7 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginForm from '../components/LoginForm.vue';
 import AboutView from '../views/AboutView.vue';
-import SignUpForm from '../components/SignUpForm.vue'; // Correctly import SignUpForm.vue
+import SignUpForm from '../components/SignUpForm.vue';
+import MatlabControl from '../components/MatlabControl.vue';
 
 const routes = [
   {
@@ -27,7 +28,12 @@ const routes = [
   {
     path: '/register',
     name: 'Register',
-    component: SignUpForm, // Use SignUpForm.vue for the /register route
+    component: SignUpForm,
+  },
+  {
+    path: '/matlab-control',
+    name: 'MatlabControl',
+    component: MatlabControl,
   },
 ];
 
