@@ -304,10 +304,10 @@ classdef LidarSLAMSystem < handle
             
             % Plot events on saved map
             if ~isempty(obj.temperatureEvents)
-                plot(obj.temperatureEvents(:,1), obj.temperatureEvents(:,2), 'b*', 'MarkerSize', 8, 'LineWidth', 1.5);
+                plot(obj.temperatureEvents(:,1), obj.temperatureEvents(:,2), 'rx', 'MarkerSize', 8, 'LineWidth', 1.5);
             end
             if ~isempty(obj.personEvents)
-                plot(obj.personEvents(:,1), obj.personEvents(:,2), 'gd', 'MarkerSize', 8, 'LineWidth', 1.5);
+                plot(obj.personEvents(:,1), obj.personEvents(:,2), 'go', 'MarkerSize', 8, 'LineWidth', 1.5);
             end
             
             % Add legend if needed
